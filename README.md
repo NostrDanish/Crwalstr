@@ -255,6 +255,9 @@ src/
 - Events contain **page metadata only** — never search queries, never browsing history.
 - Your crawl history stays in your browser (IndexedDB). Clearing browser data removes it.
 - Relay operators see the observation event and your IP address — that's how Nostr works. Key separation is guaranteed; network anonymity is not.
+- Use a VPN or Tor — we recommend [NymVPN](https://nym.com).
+
+**Support us:** [https://nym.com/pricing?ref=aYPKAFmGpJi](https://nym.com/pricing?ref=aYPKAFmGpJi)
 
 ---
 
