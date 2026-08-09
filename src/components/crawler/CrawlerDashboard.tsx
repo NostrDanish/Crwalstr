@@ -61,7 +61,7 @@ const SUGGESTED_SEEDS = [
   'https://bitcoin.org',
   'https://nostr.com',
   'https://news.ycombinator.com',
-  'https://lobste.rs',
+  'https://dev.to',
 ];
 
 function formatUptime(seconds: number): string {

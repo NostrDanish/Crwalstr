@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -59,9 +60,12 @@ export function QuickLoginDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" aria-describedby="quick-login-description">
         <DialogHeader>
           <DialogTitle className="text-center">Welcome back</DialogTitle>
+          <DialogDescription id="quick-login-description" className="sr-only">
+            Continue with the account detected in your browser extension, or choose another way to log in.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-3 py-4">
