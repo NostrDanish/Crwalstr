@@ -1,4 +1,10 @@
 // robots.txt parser and checker
+//
+// robots.txt is itself a cross-origin request, so it needs the same CORS proxy
+// fallback as page fetches. Without it every lookup failed and the crawler
+// "failed open" — claiming to respect robots.txt while ignoring it entirely.
+
+import { CORS_PROXY_TEMPLATE } from './fetcher';
 
 const robotsCache = new Map<string, { rules: RobotsRules; fetchedAt: number }>();
 const CACHE_TTL = 3600000; // 1 hour
@@ -39,6 +45,40 @@ export async function getCrawlDelay(url: string): Promise<number> {
   }
 }
 
+/** Fetch robots.txt, falling back to the CORS proxy when blocked directly. */
+async function fetchRobotsText(robotsUrl: string): Promise<string | null> {
+  const tryOnce = async (requestUrl: string): Promise<string | null> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(requestUrl, {
+        signal: controller.signal,
+        mode: 'cors',
+        credentials: 'omit',
+      });
+      // 404 = no robots.txt = crawling allowed. Distinguish from network failure.
+      if (!response.ok) return '';
+      return await response.text();
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  // Direct first.
+  try {
+    return await tryOnce(robotsUrl);
+  } catch {
+    // Almost certainly CORS — retry through the proxy so robots.txt is
+    // genuinely honoured instead of silently failing open.
+  }
+
+  try {
+    return await tryOnce(CORS_PROXY_TEMPLATE.replace('{href}', encodeURIComponent(robotsUrl)));
+  } catch {
+    return null; // Truly unreachable.
+  }
+}
+
 async function getRobotsRules(robotsUrl: string): Promise<RobotsRules | null> {
   // Check cache
   const cached = robotsCache.get(robotsUrl);
@@ -46,26 +86,12 @@ async function getRobotsRules(robotsUrl: string): Promise<RobotsRules | null> {
     return cached.rules;
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const text = await fetchRobotsText(robotsUrl);
+  if (text === null) return null; // Unreachable — caller decides policy.
 
-    const response = await fetch(robotsUrl, {
-      signal: controller.signal,
-      mode: 'cors',
-      credentials: 'omit',
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-
-    const text = await response.text();
-    const rules = parseRobotsTxt(text);
-    robotsCache.set(robotsUrl, { rules, fetchedAt: Date.now() });
-    return rules;
-  } catch {
-    return null;
-  }
+  const rules = parseRobotsTxt(text);
+  robotsCache.set(robotsUrl, { rules, fetchedAt: Date.now() });
+  return rules;
 }
 
 function parseRobotsTxt(text: string): RobotsRules {

@@ -39,6 +39,10 @@ export interface CrawlerStats {
   uptime: number;
   errors: number;
   skipped: number;
+  /** Pages that required the CORS proxy (most of the web). */
+  viaProxy: number;
+  /** Pages fetched directly because the site sends CORS headers. */
+  viaDirect: number;
 }
 
 export interface CrawlerSettings {

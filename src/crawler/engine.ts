@@ -34,6 +34,8 @@ export class CrawlerEngine {
     uptime: 0,
     errors: 0,
     skipped: 0,
+    viaProxy: 0,
+    viaDirect: 0,
   };
   private abortController: AbortController | null = null;
   private onStatsChange?: (stats: CrawlerStats) => void;
@@ -214,6 +216,8 @@ export class CrawlerEngine {
     // Update stats
     this.stats.pagesIndexed++;
     this.stats.bandwidthUsed += result.size;
+    if (result.viaProxy) this.stats.viaProxy++;
+    else this.stats.viaDirect++;
     this.stats.queueSize = await getQueueSize();
 
     // Publish SIP-01 observation to the shared index (kind 39697)

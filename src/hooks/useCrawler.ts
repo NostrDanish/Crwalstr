@@ -19,6 +19,8 @@ export function useCrawler() {
     uptime: 0,
     errors: 0,
     skipped: 0,
+    viaProxy: 0,
+    viaDirect: 0,
   });
   const [recentCrawls, setRecentCrawls] = useState<Array<{
     url: string;

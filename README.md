@@ -187,7 +187,7 @@ Multiple crawlers observing the same URL produce events with the **same `d` tag*
 
 Crawlstr is honest about what a browser can and cannot do:
 
-- **CORS** — A browser cannot fetch arbitrary pages cross-origin. Sites that don't send CORS headers can't be crawled from the browser.
+- **CORS** — A browser cannot read cross-origin responses unless the site sends CORS headers, and most don't. Crawlstr tries a direct fetch first, then falls back to a **CORS proxy** so real websites can actually be crawled. The trade-off is honest: when the proxy is used, the proxy operator sees which URL was fetched (never a search query, never a user identity). The dashboard shows the direct/proxy split per session.
 - **JavaScript rendering** — Crawlstr parses static HTML. Single-page apps that require JavaScript rendering won't have their full content extracted.
 - **Background execution** — Mobile browsers may throttle or kill background tabs. The crawler is most effective when the tab is active.
 - **Rate limits** — Per-domain rate limiting is built-in (5–8 seconds between requests). This is respectful by design.

@@ -466,6 +466,14 @@ export function CrawlerDashboard() {
                   <li>Events contain page metadata only — never search queries.</li>
                   <li>Your crawl history stays in your browser (IndexedDB).</li>
                   <li>
+                    <span className="text-yellow-600 dark:text-yellow-500 font-medium">
+                      Most sites block direct browser access (CORS).
+                    </span>{' '}
+                    Those requests are routed through a CORS proxy, so the proxy
+                    operator can see which URLs are fetched. Pages fetched this
+                    session: {stats.viaDirect} direct, {stats.viaProxy} via proxy.
+                  </li>
+                  <li>
                     Compatible with{' '}
                     <a href="https://github.com/NostrDanish/0xSearchstr" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">0xSearchstr</a>,{' '}
                     <a href="https://github.com/NostrDanish/0xPresearchstr" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">0xPresearchstr</a>, and{' '}
