@@ -10,40 +10,35 @@ import './index.css';
 // FIXME: a custom font should be used. Eg:
 // import '@fontsource-variable/<font-name>';
 
-// Register service worker for PWA.
+// Service worker: intentionally NOT registered.
 //
-// The worker never caches HTML (see public/sw.js), so a new build is always
-// picked up on reload. When a new worker activates we reload once so the page
-// and the worker are never a version apart.
+// An earlier version cached index.html and served hashed JS cache-first with no
+// invalidation, which pinned browsers to a stale bundle and kept replaying an
+// already-fixed error. public/sw.js is now a self-destructing kill switch that
+// purges all caches and unregisters itself; the browser fetches it on its own,
+// so nothing here needs to run for recovery to happen.
+//
+// Belt-and-braces: if a worker still controls this origin, tear it down and
+// clear Cache Storage from the page side too.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        updateViaCache: 'none',
-      });
+  window.addEventListener('load', () => {
+    void (async () => {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((r) => r.unregister()));
+      } catch {
+        // Ignore — nothing we can do from here.
+      }
 
-      // Ask the browser to check for a new worker immediately.
-      registration.update().catch(() => {});
-
-      // A new worker took control — reload once to run the matching bundle.
-      let reloading = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloading) return;
-        reloading = true;
-        window.location.reload();
-      });
-
-      // If an updated worker is waiting, activate it right away.
-      registration.addEventListener('updatefound', () => {
-        registration.installing?.addEventListener('statechange', function onChange() {
-          if (this.state === 'installed' && navigator.serviceWorker.controller) {
-            registration.waiting?.postMessage('SKIP_WAITING');
-          }
-        });
-      });
-    } catch (err) {
-      console.debug('SW registration failed:', err);
-    }
+      try {
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map((name) => caches.delete(name)));
+        }
+      } catch {
+        // Ignore.
+      }
+    })();
   });
 }
 

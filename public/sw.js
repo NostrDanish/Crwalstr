@@ -1,129 +1,70 @@
 /// <reference lib="webworker" />
 
-// Crawlstr Service Worker
+// Crawlstr — self-destructing service worker (kill switch).
 //
-// Caching strategy:
-//   - HTML / navigation  → NETWORK ONLY (never cached)
-//       The HTML references hashed bundle filenames. Caching it would pin the
-//       app to a stale bundle forever, which is exactly the "Card is not
-//       defined" class of ghost error.
-//   - Hashed assets      → cache-first (immutable, filename changes on rebuild)
-//   - Everything else    → network-first
+// A previous version of this worker precached index.html and served hashed JS
+// cache-first with no invalidation. That pinned browsers to a stale bundle
+// (main-RIUOZXF3.js) and resurfaced a fixed "Card is not defined" error on
+// every load, no matter how many times the project was rebuilt.
 //
-// Bump CACHE_NAME whenever this strategy changes to purge old caches.
+// Recovery cannot live in the app bundle — if the stale bundle is being served,
+// that code never runs. The browser DOES re-fetch /sw.js independently of the
+// page, so this file is the only reliable escape hatch.
+//
+// This worker therefore:
+//   1. claims all clients immediately,
+//   2. deletes every Cache Storage entry for this origin,
+//   3. unregisters itself,
+//   4. force-reloads open pages so they fetch fresh HTML + JS from the network.
+//
+// After this has run once, no service worker controls the origin and everything
+// is served straight from the network. Do not reintroduce HTML caching here.
 
-const CACHE_NAME = 'crawlstr-v3';
-
-// Only genuinely immutable, non-HTML assets are precached.
-const STATIC_ASSETS = [
-  '/manifest.webmanifest',
-];
-
-/** True for requests we must never serve from cache. */
-function isHtmlRequest(request, url) {
-  if (request.mode === 'navigate') return true;
-  if (request.destination === 'document') return true;
-  if ((request.headers.get('accept') || '').includes('text/html')) return true;
-  // Bare paths and explicit .html files
-  if (url.pathname === '/' || url.pathname.endsWith('.html')) return true;
-  return false;
-}
-
-/** Hashed build output, e.g. /main-UVK54ZXC.js — safe to cache forever. */
-function isHashedAsset(url) {
-  return /-[A-Z0-9]{8,}\.(js|css)$/i.test(url.pathname);
-}
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)),
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(
-          names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)),
-        ),
-      )
-      .then(() => self.clients.claim()),
-  );
-});
+    (async () => {
+      // 1. Purge every cache on this origin (including the poisoned ones).
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
+      } catch {
+        // Cache Storage unavailable — continue with unregistration.
+      }
 
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
+      // 2. Take control of any open pages so we can reload them.
+      try {
+        await self.clients.claim();
+      } catch {
+        // Ignore — reload below still works for future navigations.
+      }
 
-  // Only handle GET; let everything else go straight to the network.
-  if (request.method !== 'GET') return;
+      // 3. Remove this worker so the origin is no longer controlled.
+      try {
+        await self.registration.unregister();
+      } catch {
+        // Ignore.
+      }
 
-  let url;
-  try {
-    url = new URL(request.url);
-  } catch {
-    return;
-  }
-
-  // Never touch WebSocket upgrades (Nostr relays).
-  if (url.protocol === 'ws:' || url.protocol === 'wss:') return;
-  if (request.headers.get('upgrade') === 'websocket') return;
-
-  // Only manage same-origin traffic.
-  if (url.origin !== self.location.origin) return;
-
-  // ---- HTML: network only, never cached -------------------------------
-  if (isHtmlRequest(request, url)) {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' }).catch(
-        () =>
-          new Response(
-            '<!doctype html><meta charset="utf-8"><title>Offline</title>' +
-              '<body style="font:16px system-ui;padding:2rem">' +
-              '<h1>Offline</h1><p>Crawlstr needs a connection to load. ' +
-              'Your crawl queue is saved and will resume.</p>',
-            { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 },
-          ),
-      ),
-    );
-    return;
-  }
-
-  // ---- Hashed build assets: cache-first (immutable) -------------------
-  if (isHashedAsset(url)) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((response) => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            }
-            return response;
-          }),
-      ),
-    );
-    return;
-  }
-
-  // ---- Everything else: network-first, cache as fallback --------------
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+      // 4. Reload open pages so they pull fresh HTML (and the current bundle).
+      try {
+        const clients = await self.clients.matchAll({ type: 'window' });
+        for (const client of clients) {
+          if ('navigate' in client) {
+            client.navigate(client.url);
+          }
         }
-        return response;
-      })
-      .catch(() => caches.match(request)),
+      } catch {
+        // Ignore — the next manual reload will be clean.
+      }
+    })(),
   );
 });
 
-// Allow the page to force an immediate activation after an update.
-self.addEventListener('message', (event) => {
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+// Pass every request straight through. Nothing is cached, ever.
+self.addEventListener('fetch', () => {
+  // No respondWith() → default browser network handling.
 });
