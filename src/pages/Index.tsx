@@ -1,5 +1,6 @@
 import { useSeoMeta } from '@unhead/react';
 import { Radar, Globe, Shield, Zap, Users, Search } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { CrawlerDashboard } from '@/components/crawler/CrawlerDashboard';
 import { LoginArea } from '@/components/auth/LoginArea';
 
