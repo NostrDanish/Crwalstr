@@ -2,6 +2,8 @@ import { useSeoMeta } from '@unhead/react';
 import { Radar, Globe, Shield, Zap, Users, Search } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { CrawlerDashboard } from '@/components/crawler/CrawlerDashboard';
+import { CrawlstrLogo } from '@/components/crawler/CrawlstrLogo';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { LoginArea } from '@/components/auth/LoginArea';
 
 const Index = () => {
@@ -15,20 +17,31 @@ const Index = () => {
       {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
         <div className="container max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Radar className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg">Crawlstr</span>
+          <div className="flex items-center gap-2.5">
+            <CrawlstrLogo className="h-7 w-7 shrink-0" />
+            <span className="font-bold text-lg tracking-tight">Crawlstr</span>
             <span className="text-xs text-muted-foreground hidden sm:inline">
               Decentralized Web Crawler
             </span>
           </div>
-          <LoginArea className="max-w-60" />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <LoginArea className="max-w-60" />
+          </div>
         </div>
       </header>
 
       {/* Hero */}
-      <section className="container max-w-6xl mx-auto px-4 pt-12 pb-8">
+      <section className="relative isolate container max-w-6xl mx-auto px-4 pt-12 pb-8">
+        {/* Soft brand glow behind the hero */}
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 -z-10 h-64 bg-[radial-gradient(ellipse_at_top,var(--color-primary)/0.18,transparent_70%)]"
+        />
+
         <div className="text-center space-y-4 max-w-2xl mx-auto">
+          <CrawlstrLogo className="h-20 w-20 mx-auto motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-500" />
+
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
             <Globe className="h-3.5 w-3.5" />
             Powered by Nostr
@@ -188,7 +201,7 @@ const Index = () => {
         <div className="container max-w-6xl mx-auto px-4 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Radar className="h-4 w-4" />
+              <CrawlstrLogo className="h-5 w-5 shrink-0" />
               <span>Crawlstr — Decentralized Web Crawler Network</span>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">

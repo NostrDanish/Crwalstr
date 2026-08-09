@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Radar,
   Play,
   Square,
   Plus,
@@ -40,6 +39,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { CrawlstrLogo } from '@/components/crawler/CrawlstrLogo';
 import { useCrawler } from '@/hooks/useCrawler';
 import { cn } from '@/lib/utils';
 
@@ -113,16 +113,22 @@ export function CrawlerDashboard() {
       {/* Main Toggle Card */}
       <Card className={cn(
         'border-2 transition-colors duration-300',
-        isRunning ? 'border-green-500/50 bg-green-500/5' : 'border-border'
+        isRunning ? 'border-primary/50 bg-primary/5' : 'border-border'
       )}>
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={cn(
                 'p-2.5 rounded-xl transition-colors',
-                isRunning ? 'bg-green-500/20 text-green-500' : 'bg-muted text-muted-foreground'
+                isRunning ? 'bg-primary/15' : 'bg-muted'
               )}>
-                <Radar className="h-6 w-6" />
+                <CrawlstrLogo
+                  animated={isRunning}
+                  className={cn(
+                    'h-7 w-7',
+                    isRunning ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                />
               </div>
               <div>
                 <CardTitle className="text-xl">
@@ -140,10 +146,7 @@ export function CrawlerDashboard() {
               variant={isRunning ? 'destructive' : 'default'}
               onClick={isRunning ? stop : start}
               disabled={!initialized}
-              className={cn(
-                'gap-2 px-6',
-                !isRunning && 'bg-green-600 hover:bg-green-700 text-white'
-              )}
+              className="gap-2 px-6"
             >
               {isRunning ? (
                 <>
@@ -163,10 +166,10 @@ export function CrawlerDashboard() {
         {/* Live status indicator */}
         {isRunning && (
           <CardContent className="pt-0">
-            <div className="flex items-center gap-2 text-sm text-green-500">
+            <div className="flex items-center gap-2 text-sm text-primary">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
               </span>
               Crawling... Uptime: {formatUptime(stats.uptime)}
             </div>
@@ -176,10 +179,10 @@ export function CrawlerDashboard() {
 
       {/* Why pages were skipped — otherwise "0 indexed" looks like a broken app */}
       {(stats.skipped > 0 || stats.fetchFailed > 0) && (
-        <Card className="border-yellow-500/40 bg-yellow-500/5">
+        <Card className="border-chart-4/40 bg-chart-4/5">
           <CardContent className="pt-6 space-y-3">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-chart-4 shrink-0" />
               <p className="text-sm font-medium">
                 Why pages weren't indexed
               </p>
@@ -244,7 +247,7 @@ export function CrawlerDashboard() {
                 onClick={copyNpub}
                 className="shrink-0"
               >
-                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
@@ -419,7 +422,7 @@ export function CrawlerDashboard() {
                         key={page.url}
                         className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                       >
-                        <CheckCircle2 className="h-4 w-4 text-green-500 mt-1 shrink-0" />
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-1 shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-sm truncate">
                             {page.title || 'Untitled'}
@@ -533,7 +536,7 @@ export function CrawlerDashboard() {
 
               <div className="rounded-lg bg-muted/50 p-4 space-y-2">
                 <h4 className="font-medium text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <AlertTriangle className="h-4 w-4 text-chart-4" />
                   Privacy & Trust
                 </h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
@@ -552,7 +555,7 @@ export function CrawlerDashboard() {
                   <li>Events contain page metadata only — never search queries.</li>
                   <li>Your crawl history stays in your browser (IndexedDB).</li>
                   <li>
-                    <span className="text-yellow-600 dark:text-yellow-500 font-medium">
+                    <span className="text-chart-4 font-medium">
                       Most sites block direct browser access (CORS).
                     </span>{' '}
                     Those requests are routed through a CORS proxy, so the proxy

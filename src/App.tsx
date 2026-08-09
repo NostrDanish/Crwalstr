@@ -32,7 +32,9 @@ const queryClient = new QueryClient({
 });
 
 const defaultConfig: AppConfig = {
-  theme: "light",
+  // Dark by default — matches the crawler/terminal aesthetic. Users can
+  // switch via the toggle in the header (persisted to local storage).
+  theme: "dark",
   relayMetadata: APP_RELAYS,
   blossomServerMetadata: {
     servers: [
