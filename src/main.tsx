@@ -10,6 +10,15 @@ import './index.css';
 // FIXME: a custom font should be used. Eg:
 // import '@fontsource-variable/<font-name>';
 
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.debug('SW registration failed:', err);
+    });
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <App />

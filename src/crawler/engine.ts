@@ -1,0 +1,299 @@
+// Main crawler engine — orchestrates the crawl loop
+
+import { fetchPage } from './fetcher';
+import { parsePage } from './parser';
+import { hashContent, normalizeUrl } from './hasher';
+import { shouldCrawlUrl, getCrawlDelay } from './robots';
+import { canMakeRequest } from './limits';
+import { publishCrawlResult } from './publisher';
+import {
+  initDB,
+  addToQueue,
+  getNextJob,
+  removeFromQueue,
+  getQueueSize,
+  getCrawled,
+  markCrawled,
+  findByHash,
+  getCrawledCount,
+  getRecentCrawled,
+  clearQueue,
+} from './queue';
+import { DEFAULT_SETTINGS, type CrawlerStats, type CrawlerSettings, type CrawlJob } from './types';
+
+export class CrawlerEngine {
+  private running = false;
+  private startTime = 0;
+  private settings: CrawlerSettings;
+  private stats: CrawlerStats = {
+    pagesIndexed: 0,
+    queueSize: 0,
+    bandwidthUsed: 0,
+    uptime: 0,
+    errors: 0,
+    skipped: 0,
+  };
+  private abortController: AbortController | null = null;
+  private onStatsChange?: (stats: CrawlerStats) => void;
+
+  constructor(settings?: Partial<CrawlerSettings>) {
+    const stored = localStorage.getItem('crawler-settings');
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(stored ? JSON.parse(stored) : {}),
+      ...settings,
+    };
+  }
+
+  async init(): Promise<void> {
+    await initDB();
+    this.stats.queueSize = await getQueueSize();
+    this.stats.pagesIndexed = await getCrawledCount();
+  }
+
+  onStats(callback: (stats: CrawlerStats) => void): void {
+    this.onStatsChange = callback;
+  }
+
+  private emitStats(): void {
+    this.stats.uptime = this.running ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
+    this.onStatsChange?.({ ...this.stats });
+  }
+
+  async start(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    this.startTime = Date.now();
+    this.abortController = new AbortController();
+    this.emitStats();
+    this.crawlLoop();
+  }
+
+  async stop(): Promise<void> {
+    this.running = false;
+    this.abortController?.abort();
+    this.emitStats();
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  getStats(): CrawlerStats {
+    return { ...this.stats };
+  }
+
+  getSettings(): CrawlerSettings {
+    return { ...this.settings };
+  }
+
+  updateSettings(settings: Partial<CrawlerSettings>): void {
+    this.settings = { ...this.settings, ...settings };
+    localStorage.setItem('crawler-settings', JSON.stringify(this.settings));
+  }
+
+  async seedUrl(url: string, priority = 1.0): Promise<void> {
+    const normalizedUrl = normalizeUrl(url);
+    await addToQueue({
+      url: normalizedUrl,
+      priority,
+      depth: 0,
+      attempts: 0,
+    });
+    this.stats.queueSize = await getQueueSize();
+    this.emitStats();
+  }
+
+  async clearAll(): Promise<void> {
+    await clearQueue();
+    this.stats.queueSize = 0;
+    this.emitStats();
+  }
+
+  async getRecentCrawls(limit = 20) {
+    return getRecentCrawled(limit);
+  }
+
+  private async crawlLoop(): Promise<void> {
+    while (this.running) {
+      try {
+        // Check if we can crawl (battery, network, settings)
+        if (!(await this.canCrawl())) {
+          await this.sleep(10000);
+          continue;
+        }
+
+        // Get next job
+        const job = await getNextJob();
+        if (!job) {
+          await this.sleep(5000);
+          continue;
+        }
+
+        // Check rate limit
+        if (!(await canMakeRequest(job.url))) {
+          // Put back in queue with delay
+          job.nextAttempt = Date.now() + 10000;
+          await addToQueue(job);
+          await this.sleep(5000);
+          continue;
+        }
+
+        await this.crawlUrl(job);
+        this.emitStats();
+
+        // Rate limit: wait between requests
+        const crawlDelay = this.settings.respectRobots ? await getCrawlDelay(job.url) : 0;
+        await this.sleep(Math.max(crawlDelay, this.settings.ecoMode ? 8000 : 3000));
+      } catch (error) {
+        console.error('[Crawler] Loop error:', error);
+        this.stats.errors++;
+        this.emitStats();
+        await this.sleep(10000);
+      }
+    }
+  }
+
+  private async crawlUrl(job: CrawlJob): Promise<void> {
+    // Check if already crawled
+    const existing = await getCrawled(job.url);
+    if (existing) {
+      await removeFromQueue(job.url);
+      this.stats.skipped++;
+      return;
+    }
+
+    // Check robots.txt
+    if (this.settings.respectRobots) {
+      const allowed = await shouldCrawlUrl(job.url);
+      if (!allowed) {
+        console.debug('[Crawler] Blocked by robots.txt:', job.url);
+        await removeFromQueue(job.url);
+        this.stats.skipped++;
+        return;
+      }
+    }
+
+    // Fetch page
+    const result = await fetchPage(job.url, this.settings.maxPageSizeKB);
+    if (!result) {
+      this.stats.errors++;
+      job.attempts++;
+      if (job.attempts >= 3) {
+        await removeFromQueue(job.url);
+      } else {
+        job.nextAttempt = Date.now() + Math.pow(2, job.attempts) * 60000;
+        await addToQueue(job);
+      }
+      return;
+    }
+
+    // Parse content
+    const parsed = parsePage(result.html, job.url);
+
+    // Skip pages with very little content
+    if (parsed.wordCount < 10) {
+      await removeFromQueue(job.url);
+      this.stats.skipped++;
+      return;
+    }
+
+    // Hash content
+    const contentHash = await hashContent(parsed.text);
+
+    // Check for duplicate content
+    const duplicate = await findByHash(contentHash);
+    if (duplicate) {
+      await removeFromQueue(job.url);
+      this.stats.skipped++;
+      return;
+    }
+
+    // Mark as crawled
+    await markCrawled(job.url, contentHash, parsed.title);
+    await removeFromQueue(job.url);
+
+    // Update stats
+    this.stats.pagesIndexed++;
+    this.stats.bandwidthUsed += result.size;
+    this.stats.queueSize = await getQueueSize();
+
+    // Publish to Nostr
+    await publishCrawlResult({
+      url: job.url,
+      title: parsed.title,
+      description: parsed.description,
+      contentHash,
+      language: parsed.language,
+      links: parsed.links.slice(0, 20),
+      wordCount: parsed.wordCount,
+      crawledAt: Date.now(),
+      status: result.status,
+      contentType: result.contentType,
+    });
+
+    // Add discovered links to queue
+    if (job.depth < this.settings.maxDepth) {
+      const maxLinks = this.settings.ecoMode ? 5 : 10;
+      for (const link of parsed.links.slice(0, maxLinks)) {
+        const normalized = normalizeUrl(link);
+        // Don't re-crawl same domain too aggressively in eco mode
+        if (this.settings.ecoMode && normalized === job.url) continue;
+
+        await addToQueue({
+          url: normalized,
+          priority: job.priority * 0.8,
+          depth: job.depth + 1,
+          discoveredFrom: job.url,
+          attempts: 0,
+        });
+      }
+      this.stats.queueSize = await getQueueSize();
+    }
+  }
+
+  private async canCrawl(): Promise<boolean> {
+    // Check battery
+    if ('getBattery' in navigator) {
+      try {
+        const battery = await (navigator as unknown as { getBattery(): Promise<{ level: number; charging: boolean }> }).getBattery();
+        if (battery.level < 0.15 && !battery.charging) {
+          return false; // Battery critically low
+        }
+        if (this.settings.chargingOnly && !battery.charging) {
+          return false;
+        }
+      } catch {
+        // Battery API not available, continue
+      }
+    }
+
+    // Check network
+    if ('connection' in navigator) {
+      const conn = (navigator as unknown as { connection?: { effectiveType?: string; type?: string } }).connection;
+      if (conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g') {
+        return false;
+      }
+      if (this.settings.wifiOnly && conn?.type !== 'wifi' && conn?.effectiveType !== '4g') {
+        return false;
+      }
+    }
+
+    // Check bandwidth limit
+    if (this.stats.bandwidthUsed > this.settings.maxBandwidthMB * 1024 * 1024) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timeout = setTimeout(resolve, ms);
+      this.abortController?.signal.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+}
