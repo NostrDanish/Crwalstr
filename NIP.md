@@ -1,167 +1,143 @@
-# Searchstr Crawler Network Protocol v1
+# Crawlstr — Event Kinds & Protocol Reference
 
-This document defines the custom Nostr event kinds used by the Searchstr Crawler Network — a decentralized, opt-in web crawling and indexing protocol.
+Crawlstr is a **browser-based web crawler** that publishes to the **shared SIP-01
+(Search Index Protocol) index** on Nostr. It uses the exact same event kinds,
+tags, URL normalization, and schemas as
+[0xSearchstr](https://github.com/NostrDanish/0xSearchstr),
+[0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr), and
+[UNCAGED-ENGINE](https://github.com/NostrDanish/UNCAGED-ENGINE).
 
-## Overview
+## Protocol Compatibility
 
-The Searchstr Crawler Network uses Nostr as a **coordination and discovery layer**, not as a search database. Crawlers publish compact metadata about pages they discover. Indexers consume these events to build local search indexes.
+| Schema | Kind | Type | Status |
+|--------|------|------|--------|
+| Web Index Observation (SIP-01) | **39697** | addressable | **Written** by Crawlstr |
 
-```
-Crawlers (browser/desktop/server)
-    │
-    ▼ publish crawl results
-Nostr Relays
-    │
-    ▼ consume events
-Indexers (SQLite FTS5, Tantivy, etc.)
-    │
-    ▼ serve queries
-Search Interfaces (Searchstr, UNCAGED, etc.)
-```
+Crawlstr is a **pure SIP-01 publisher** — it only writes kind 39697 events.
+It does NOT write community submissions (kind 30078) or query caches.
 
-## Event Kinds
+## What Crawlstr Writes
 
-### Kind 20001 — Crawl Request (Ephemeral)
+### Kind 39697 — Web Index Observation (SIP-01)
 
-Announces a URL that needs crawling. Any crawler node can pick it up.
+One addressable event per `(crawler's indexer pubkey, normalized URL)` — a signed
+statement: *"This device observed this web page at this time, and here is its
+public metadata."*
 
 ```json
 {
-  "kind": 20001,
-  "content": "",
+  "kind": 39697,
+  "pubkey": "<device indexer pubkey, hex>",
+  "created_at": 1786250000,
+  "content": "{\"title\":\"Example Page\",\"description\":\"A page about...\",\"image\":\"https://example.com/og.jpg\"}",
   "tags": [
-    ["url", "https://example.com/page"],
-    ["domain", "example.com"],
-    ["priority", "0.8"],
-    ["depth", "2"],
-    ["protocol", "searchstr/v1"],
-    ["alt", "Crawl request for https://example.com/page"]
+    ["d", "widx:9f86d081884c7d659a2feaa0c55ad015"],
+    ["u", "https://example.com/page"],
+    ["l", "en"],
+    ["x", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
+    ["v", "1"],
+    ["source", "crawlstr/1"],
+    ["alt", "Web index observation: Example Page"]
   ]
 }
 ```
 
 **Tags:**
 
-| Tag | Required | Description |
-|-----|----------|-------------|
-| `url` | yes | The URL to crawl |
-| `domain` | yes | Domain extracted from URL |
-| `priority` | yes | Crawl priority (0.0–1.0) |
-| `depth` | yes | Link depth from original seed |
-| `protocol` | yes | Protocol version identifier |
+| Tag | Required | Meaning |
+|-----|----------|---------|
+| `d` | ✔ | `"widx:" + sha256(normalized_url)[0:32]` — URL identity, identical across all indexers |
+| `u` | ✔ | Canonical URL (http/https only, normalized per SIP-01 §8) |
+| `v` | ✔ | Schema version `"1"` |
+| `x` | ✔ | Content hash: `sha256(title + "\n" + description)` |
+| `l` | – | ISO 639-1 language code |
+| `source` | – | `"crawlstr/1"` — identifies this software |
+| `alt` | ✔ | NIP-31 human-readable description |
 
-### Kind 20002 — Crawl Result (Ephemeral)
+**Key properties (same as all SIP-01 publishers):**
 
-Published by a crawler after successfully fetching and parsing a page.
+- **Per-device indexer identity** — each browser generates its own anonymous keypair
+  on first use (`localStorage: sip:indexer:secret`). Never the user's personal key.
+- **No query leakage** — the event contains a URL and public page metadata, never
+  what anyone searched for.
+- **URL normalization** — identical to SIP-01 §8: strips tracking params, lowercases
+  host, removes `www.`, sorts query params, removes fragments.
+- **Deduplication** — the `d` tag is deterministic from the normalized URL; the
+  `x` tag is a content agreement signal. Multiple crawlers observing the same page
+  produce events with the same `d` — search nodes count distinct authors.
+- **Addressable** — re-crawling the same URL replaces the previous observation
+  (one slot per indexer per URL).
 
-```json
-{
-  "kind": 20002,
-  "content": "{\"title\":\"Page Title\",\"description\":\"Meta description\",\"word_count\":1234,\"protocol\":\"searchstr/v1\"}",
-  "tags": [
-    ["url", "https://example.com/page"],
-    ["d", "https://example.com/page"],
-    ["domain", "example.com"],
-    ["hash", "sha256:abc123..."],
-    ["status", "200"],
-    ["content-type", "text/html"],
-    ["language", "en"],
-    ["protocol", "searchstr/v1"],
-    ["alt", "Crawl result for https://example.com/page"]
-  ]
-}
-```
+## How Crawlstr Differs from Other SIP-01 Publishers
 
-**Tags:**
+| Feature | 0xSearchstr / UNCAGED | Crawlstr |
+|---------|----------------------|----------|
+| **Trigger** | Search results surfaced by providers | Active web crawling |
+| **Discovery** | Search results from external APIs | Link following from seed URLs |
+| **Depth** | 1 (direct results only) | Configurable (up to 3 by default) |
+| **Rate limiting** | N/A (API-driven) | Per-domain, configurable |
+| **robots.txt** | N/A | Respected (configurable) |
+| **Queue** | N/A | IndexedDB persistent queue |
+| **Power management** | N/A | Battery/WiFi/bandwidth aware |
 
-| Tag | Required | Description |
-|-----|----------|-------------|
-| `url` | yes | Canonical URL of the crawled page |
-| `d` | yes | Same as `url` — used for addressable dedup |
-| `domain` | yes | Domain extracted from URL |
-| `hash` | yes | SHA-256 hash of normalized page text content |
-| `status` | yes | HTTP status code |
-| `content-type` | yes | Response content type |
-| `language` | yes | Detected page language (ISO 639-1) |
-| `protocol` | yes | Protocol version identifier |
-| `alt` | yes | Human-readable description (NIP-31) |
+The **event schema is identical**. The difference is only in how URLs are discovered.
 
-**Content:**
+## Relay Publishing
 
-JSON object with compact metadata:
+Crawlstr publishes to the same relay pool as the ecosystem:
 
-```json
-{
-  "title": "Page Title",
-  "description": "Meta description text",
-  "word_count": 1234,
-  "protocol": "searchstr/v1"
-}
-```
+**Search relays (NIP-50):**
+- `wss://relay.nostr.band/`
+- `wss://relay.ditto.pub/`
+- `wss://search.nos.today/`
+- `wss://relay.noswhere.com/`
 
-> **Note:** The full page text is NOT stored in the Nostr event. Indexers can use the content hash to identify duplicates and may re-fetch pages if full text is needed.
+**Write relays (for propagation):**
+- `wss://relay.ditto.pub/`
+- `wss://relay.primal.net/`
+- `wss://relay.damus.io/`
 
-## Design Principles
+## Reading the Index
 
-1. **Nostr is the coordination layer, not the database.** Only compact metadata goes on Nostr. Full content stays local to crawlers/indexers.
-
-2. **Content hashing enables deduplication.** Multiple crawlers fetching the same page produce the same `hash` tag. Indexers use this to deduplicate.
-
-3. **Opt-in and transparent.** Crawlers are always explicitly enabled by the user. No hidden crawling, no tracking, no analytics.
-
-4. **Respectful by default.** Crawlers respect robots.txt, implement per-domain rate limiting, and adapt to device battery/network conditions.
-
-5. **No central authority.** Anyone can run a crawler, anyone can run an indexer. The protocol is open and permissionless.
-
-## Crawler Behavior
-
-### Queue Management
-
-Crawlers maintain a local IndexedDB queue that persists across sessions:
+Any SIP-01 compatible search engine can read Crawlstr's observations:
 
 ```json
 {
-  "url": "https://example.com/article",
-  "priority": 0.72,
-  "depth": 2,
-  "discovered_from": "https://example.com",
-  "attempts": 1,
-  "last_attempt": 1786250000,
-  "next_attempt": 1786253600
+  "kinds": [39697],
+  "#d": ["widx:9f86d081884c7d659a2feaa0c55ad015"]
 }
 ```
 
-### URL Canonicalization
+Or browse by topic:
 
-Before hashing, URLs are normalized:
-- Remove tracking parameters (`utm_*`, `fbclid`, `gclid`, etc.)
-- Lowercase hostname
-- Remove trailing slash from root paths
-- Preserve meaningful query parameters (`?page=2`, `?id=123`)
+```json
+{
+  "kinds": [39697],
+  "#t": ["nostr"],
+  "limit": 50
+}
+```
 
-### Rate Limiting
+Or query full-text via NIP-50 (on capable relays):
 
-- **Per-domain:** Minimum 5 seconds between requests (eco mode: 8 seconds)
-- **Per-crawler:** Configurable max pages per hour
-- **Per-session:** Configurable max bandwidth
+```json
+{
+  "kinds": [39697],
+  "search": "bitcoin privacy",
+  "limit": 20
+}
+```
 
-### Power Management
+## Trust Model
 
-- Battery < 15% and not charging → **STOP**
-- WiFi-only mode → **STOP** on cellular
-- Charging-only mode → **STOP** when unplugged
-- Eco mode → longer delays, fewer concurrent requests
+- Crawlstr observations are **structurally trusted** — any indexer pubkey is accepted.
+- Events are validated on parse: schema version, URL allowlist, field caps.
+- Agreement across independent indexers (same `d`, different `pubkey`) is the
+  ranking signal.
+- Crawlstr is just one more independent indexer in the SIP-01 ecosystem.
 
-## Future Extensions
+## References
 
-- **Kind 20003** — URL Discovery (lightweight link announcements without full crawl)
-- **Kind 20004** — Index Announcement (indexer capability/discovery)
-- **Kind 20005** — Crawler Capability (what a node can handle)
-- **Kind 20006** — Crawl Policy (per-domain rules)
-
-## Security Considerations
-
-- Crawl results are signed by the crawler's Nostr key — this proves authorship, not accuracy
-- Indexers should validate results and use multi-crawler consensus for trust
-- Content hashing prevents some forms of spam but not all
-- Crawler reputation should be based on accuracy, consistency, and diversity — not used as a permission system
+- **SIP-01 Spec:** [0xSearchstr/docs/SEARCH_INDEX_PROTOCOL.md](https://github.com/NostrDanish/0xSearchstr/blob/main/docs/SEARCH_INDEX_PROTOCOL.md)
+- **0xSearchstr NIP.md:** [legacy schemas, community submissions, Nostra interop](https://github.com/NostrDanish/0xSearchstr/blob/main/NIP.md)
+- **UNCAGED-ENGINE NIP.md:** [reference implementation schemas](https://github.com/NostrDanish/UNCAGED-ENGINE/blob/main/NIP.md)

@@ -16,6 +16,9 @@ import {
   Wifi,
   BatteryCharging,
   Shield,
+  Key,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,16 +65,17 @@ export function CrawlerDashboard() {
     initialized,
     stats,
     recentCrawls,
+    indexerInfo,
     start,
     stop,
     seedUrl,
     clearAll,
     updateSettings,
     getSettings,
-    isLoggedIn,
   } = useCrawler();
 
   const [seedInput, setSeedInput] = useState('');
+  const [copied, setCopied] = useState(false);
   const settings = getSettings();
 
   const handleSeed = () => {
@@ -82,6 +86,13 @@ export function CrawlerDashboard() {
     }
     seedUrl(url);
     setSeedInput('');
+  };
+
+  const copyNpub = () => {
+    if (!indexerInfo) return;
+    navigator.clipboard.writeText(indexerInfo.npub);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -106,7 +117,7 @@ export function CrawlerDashboard() {
                 </CardTitle>
                 <CardDescription>
                   {isRunning
-                    ? 'Your browser is contributing to the decentralized index'
+                    ? 'Your browser is contributing to the shared SIP-01 index'
                     : 'Enable to start crawling and indexing the web'}
                 </CardDescription>
               </div>
@@ -150,6 +161,39 @@ export function CrawlerDashboard() {
         )}
       </Card>
 
+      {/* Indexer Identity Card */}
+      {indexerInfo && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                  <Key className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Indexer Identity (SIP-01)</p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">
+                    {indexerInfo.npub}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={copyNpub}
+                className="shrink-0"
+              >
+                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Per-device pseudonymous keypair. Signs kind 39697 observations.
+              Separate from your personal Nostr identity.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
@@ -189,12 +233,10 @@ export function CrawlerDashboard() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Globe className="h-4 w-4" />
-              <span className="text-xs font-medium">Network</span>
+              <span className="text-xs font-medium">Protocol</span>
             </div>
-            <div className="text-2xl font-bold">{isLoggedIn ? 'Nostr' : 'Local'}</div>
-            <p className="text-xs text-muted-foreground">
-              {isLoggedIn ? 'publishing' : 'log in to publish'}
-            </p>
+            <div className="text-2xl font-bold">SIP-01</div>
+            <p className="text-xs text-muted-foreground">kind 39697</p>
           </CardContent>
         </Card>
       </div>
@@ -216,7 +258,8 @@ export function CrawlerDashboard() {
             <CardHeader>
               <CardTitle className="text-lg">Add URLs to Crawl</CardTitle>
               <CardDescription>
-                Enter a URL to start crawling. The crawler will follow links up to depth {settings.maxDepth}.
+                Enter a URL to start crawling. Pages are published as SIP-01 observations
+                (kind 39697) readable by 0xSearchstr, 0xPresearchstr, UNCAGED, and any compatible client.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -272,7 +315,7 @@ export function CrawlerDashboard() {
             <CardHeader>
               <CardTitle className="text-lg">Recently Crawled</CardTitle>
               <CardDescription>
-                Pages indexed by this browser
+                Pages indexed by this browser, published as SIP-01 observations
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -304,9 +347,14 @@ export function CrawlerDashboard() {
                             <span className="truncate">{page.url}</span>
                             <ExternalLink className="h-3 w-3 shrink-0" />
                           </a>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(page.crawledAt).toLocaleString()}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(page.crawledAt).toLocaleString()}
+                            </p>
+                            <Badge variant="outline" className="text-xs">
+                              kind 39697
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -403,14 +451,26 @@ export function CrawlerDashboard() {
                   Privacy & Trust
                 </h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li className="flex items-center gap-2">
+                  <li className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="text-xs">No tracking</Badge>
                     <Badge variant="outline" className="text-xs">No analytics</Badge>
-                    <Badge variant="outline" className="text-xs">No accounts</Badge>
+                    <Badge variant="outline" className="text-xs">SIP-01</Badge>
+                    <Badge variant="outline" className="text-xs">kind 39697</Badge>
                   </li>
                   <li>The crawler only runs when you explicitly enable it.</li>
-                  <li>Crawl results are published to Nostr {isLoggedIn ? 'under your identity' : '(log in to publish)'}.</li>
+                  <li>
+                    Observations are signed by a per-device indexer key
+                    ({indexerInfo ? indexerInfo.npub.slice(0, 16) + '...' : 'generating...'}),
+                    never your personal Nostr identity.
+                  </li>
+                  <li>Events contain page metadata only — never search queries.</li>
                   <li>Your crawl history stays in your browser (IndexedDB).</li>
+                  <li>
+                    Compatible with{' '}
+                    <a href="https://github.com/NostrDanish/0xSearchstr" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">0xSearchstr</a>,{' '}
+                    <a href="https://github.com/NostrDanish/0xPresearchstr" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">0xPresearchstr</a>, and{' '}
+                    <a href="https://github.com/NostrDanish/UNCAGED-ENGINE" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">UNCAGED</a>.
+                  </li>
                 </ul>
               </div>
             </CardContent>

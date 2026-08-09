@@ -1,13 +1,14 @@
 // React hook for the crawler engine
+// Wires up SIP-01 publishing via Nostr relays
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNostr } from '@nostrify/react';
 import { CrawlerEngine } from '@/crawler/engine';
-import { setPublisher } from '@/crawler/publisher';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { setRelayPublisher, getIndexerInfo } from '@/crawler/publisher';
 import type { CrawlerStats, CrawlerSettings } from '@/crawler/types';
 
 export function useCrawler() {
+  const { nostr } = useNostr();
   const engineRef = useRef<CrawlerEngine | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [initialized, setInitialized] = useState(false);
@@ -24,17 +25,16 @@ export function useCrawler() {
     title: string;
     crawledAt: number;
   }>>([]);
+  const [indexerInfo, setIndexerInfo] = useState<{ pubkeyHex: string; npub: string } | null>(null);
 
-  const { user } = useCurrentUser();
-  const { mutateAsync: publishEvent } = useNostrPublish();
-
-  // Initialize engine
+  // Initialize engine and indexer identity
   useEffect(() => {
     const engine = new CrawlerEngine();
     engine.init().then(() => {
       engineRef.current = engine;
       setInitialized(true);
       setStats(engine.getStats());
+      setIndexerInfo(getIndexerInfo());
     });
 
     engine.onStats((newStats) => {
@@ -46,18 +46,17 @@ export function useCrawler() {
     };
   }, []);
 
-  // Wire up Nostr publishing when user is logged in
+  // Wire up relay publishing via the Nostr connection pool
   useEffect(() => {
-    if (user) {
-      setPublisher(async (event) => {
-        await publishEvent(event);
-      });
-    } else {
-      setPublisher(async () => {
-        // No-op when not logged in — crawl locally only
-      });
-    }
-  }, [user, publishEvent]);
+    setRelayPublisher(async (relayUrl, event) => {
+      try {
+        // Use the nostr pool to publish — it handles relay connections
+        await nostr.event(event, { signal: AbortSignal.timeout(10000) });
+      } catch (error) {
+        console.debug(`[Crawler] Failed to publish to relay:`, error);
+      }
+    });
+  }, [nostr]);
 
   // Poll recent crawls
   useEffect(() => {
@@ -121,12 +120,12 @@ export function useCrawler() {
     initialized,
     stats,
     recentCrawls,
+    indexerInfo,
     start,
     stop,
     seedUrl,
     clearAll,
     updateSettings,
     getSettings,
-    isLoggedIn: !!user,
   };
 }

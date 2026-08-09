@@ -37,9 +37,9 @@ const Index = () => {
             Search without the cage.
           </h1>
           <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            Turn your browser into a voluntary web crawler. Help build a
-            decentralized, censorship-resistant search index — no company owns the
-            crawler network.
+            Turn your browser into a voluntary web crawler. Every page you crawl
+            feeds the shared SIP-01 index — readable by 0xSearchstr, 0xPresearchstr,
+            UNCAGED, and any compatible client.
           </p>
         </div>
       </section>
@@ -68,9 +68,9 @@ const Index = () => {
           <div className="flex items-center gap-3 p-4 rounded-lg border bg-card">
             <Users className="h-8 w-8 text-primary shrink-0" />
             <div>
-              <h3 className="font-semibold text-sm">Decentralized</h3>
+              <h3 className="font-semibold text-sm">SIP-01 Compatible</h3>
               <p className="text-xs text-muted-foreground">
-                Results published to Nostr relays
+                Same protocol as 0xSearchstr, Presearchstr, UNCAGED
               </p>
             </div>
           </div>
@@ -116,7 +116,7 @@ const Index = () => {
                 step: '4',
                 icon: Globe,
                 title: 'Publish',
-                desc: 'Crawl results are signed and published to Nostr relays for indexers',
+                desc: 'Kind 39697 SIP-01 observations signed by your device indexer key',
               },
             ].map(({ step, icon: Icon, title, desc }) => (
               <div key={step} className="text-center space-y-3">
@@ -140,37 +140,42 @@ const Index = () => {
             <Card>
               <CardContent className="pt-6">
                 <pre className="text-xs sm:text-sm font-mono text-muted-foreground overflow-x-auto whitespace-pre">
-{`┌──────────────────────┐
-│   Searchstr / UNCAGED │
-│       PWA UI          │
-└──────────┬───────────┘
-           │
-┌──────────▼───────────┐
-│   CRAWLER ENGINE     │
-│  Queue → Fetch       │
-│    → Parse → Hash    │
-│    → Deduplicate     │
-│    → Publish         │
-└──────────┬───────────┘
-           │
-     ┌─────▼─────┐
-     │   NOSTR   │
-     │  RELAYS   │
-     └─────┬─────┘
-           │
-    ┌──────┼──────┐
-    ▼      ▼      ▼
- Browser Desktop Server
- Crawler  Node   Node
-    │      │      │
-    └──────┼──────┘
-           │
-     ┌─────▼─────┐
-     │ INDEXERS  │
-     │ FTS / DB  │
-     └─────┬─────┘
-           │
-     SEARCH RESULTS`}
+{`┌──────────────────────────┐
+│       CRAWLSTR PWA       │
+│  (this app — you are     │
+│   the crawler)           │
+└───────────┬──────────────┘
+            │
+  ┌─────────▼─────────┐
+  │  CRAWLER ENGINE   │
+  │  Queue → Fetch    │
+  │   → Parse → Hash  │
+  │   → SIP-01 Sign   │
+  │   → Publish       │
+  └─────────┬─────────┘
+            │
+      ┌─────▼─────┐
+      │   NOSTR   │
+      │  RELAYS   │
+      │           │
+      │ kind 39697│
+      │ (SIP-01)  │
+      └─────┬─────┘
+            │
+   ┌────────┼────────┐
+   ▼        ▼        ▼
+0xSearchstr 0xPre-  UNCAGED
+            searchstr
+   │        │        │
+   └────────┼────────┘
+            │
+     ┌──────▼──────┐
+     │  Any SIP-01  │
+     │  compatible  │
+     │  search node │
+     └──────┬──────┘
+            │
+      SEARCH RESULTS`}
                 </pre>
               </CardContent>
             </Card>

@@ -1,11 +1,13 @@
 // Main crawler engine — orchestrates the crawl loop
+// Publishes SIP-01 (kind 39697) web index observations via the shared protocol
 
 import { fetchPage } from './fetcher';
 import { parsePage } from './parser';
-import { hashContent, normalizeUrl } from './hasher';
+import { normalizeIndexUrl } from './webIndex';
+import { hashContent } from './hasher';
 import { shouldCrawlUrl, getCrawlDelay } from './robots';
 import { canMakeRequest } from './limits';
-import { publishCrawlResult } from './publisher';
+import { publishIndexObservation } from './publisher';
 import {
   initDB,
   addToQueue,
@@ -93,7 +95,8 @@ export class CrawlerEngine {
   }
 
   async seedUrl(url: string, priority = 1.0): Promise<void> {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeIndexUrl(url);
+    if (!normalizedUrl) return;
     await addToQueue({
       url: normalizedUrl,
       priority,
@@ -117,22 +120,18 @@ export class CrawlerEngine {
   private async crawlLoop(): Promise<void> {
     while (this.running) {
       try {
-        // Check if we can crawl (battery, network, settings)
         if (!(await this.canCrawl())) {
           await this.sleep(10000);
           continue;
         }
 
-        // Get next job
         const job = await getNextJob();
         if (!job) {
           await this.sleep(5000);
           continue;
         }
 
-        // Check rate limit
         if (!(await canMakeRequest(job.url))) {
-          // Put back in queue with delay
           job.nextAttempt = Date.now() + 10000;
           await addToQueue(job);
           await this.sleep(5000);
@@ -142,7 +141,6 @@ export class CrawlerEngine {
         await this.crawlUrl(job);
         this.emitStats();
 
-        // Rate limit: wait between requests
         const crawlDelay = this.settings.respectRobots ? await getCrawlDelay(job.url) : 0;
         await this.sleep(Math.max(crawlDelay, this.settings.ecoMode ? 8000 : 3000));
       } catch (error) {
@@ -198,19 +196,19 @@ export class CrawlerEngine {
       return;
     }
 
-    // Hash content
-    const contentHash = await hashContent(parsed.text);
+    // Hash content for local dedup
+    const localHash = await hashContent(parsed.text);
 
-    // Check for duplicate content
-    const duplicate = await findByHash(contentHash);
+    // Check for duplicate content locally
+    const duplicate = await findByHash(localHash);
     if (duplicate) {
       await removeFromQueue(job.url);
       this.stats.skipped++;
       return;
     }
 
-    // Mark as crawled
-    await markCrawled(job.url, contentHash, parsed.title);
+    // Mark as crawled locally
+    await markCrawled(job.url, localHash, parsed.title);
     await removeFromQueue(job.url);
 
     // Update stats
@@ -218,27 +216,25 @@ export class CrawlerEngine {
     this.stats.bandwidthUsed += result.size;
     this.stats.queueSize = await getQueueSize();
 
-    // Publish to Nostr
-    await publishCrawlResult({
+    // Publish SIP-01 observation to the shared index (kind 39697)
+    // This is the same protocol used by 0xSearchstr, 0xPresearchstr, UNCAGED-ENGINE
+    await publishIndexObservation({
       url: job.url,
       title: parsed.title,
       description: parsed.description,
-      contentHash,
       language: parsed.language,
-      links: parsed.links.slice(0, 20),
-      wordCount: parsed.wordCount,
-      crawledAt: Date.now(),
-      status: result.status,
-      contentType: result.contentType,
+      source: 'crawlstr/1',
     });
 
     // Add discovered links to queue
     if (job.depth < this.settings.maxDepth) {
       const maxLinks = this.settings.ecoMode ? 5 : 10;
       for (const link of parsed.links.slice(0, maxLinks)) {
-        const normalized = normalizeUrl(link);
-        // Don't re-crawl same domain too aggressively in eco mode
-        if (this.settings.ecoMode && normalized === job.url) continue;
+        const normalized = normalizeIndexUrl(link);
+        if (!normalized) continue;
+
+        // Don't re-crawl same URL
+        if (normalized === job.url) continue;
 
         await addToQueue({
           url: normalized,
@@ -258,7 +254,7 @@ export class CrawlerEngine {
       try {
         const battery = await (navigator as unknown as { getBattery(): Promise<{ level: number; charging: boolean }> }).getBattery();
         if (battery.level < 0.15 && !battery.charging) {
-          return false; // Battery critically low
+          return false;
         }
         if (this.settings.chargingOnly && !battery.charging) {
           return false;

@@ -1,84 +1,83 @@
-// Nostr event publisher for crawl results
-// This will be called by the engine with a signer function injected
+/**
+ * Index publisher — signs and publishes SIP-01 web index observations
+ * (kind 39697, see docs/SEARCH_INDEX_PROTOCOL.md in 0xSearchstr/UNCAGED-ENGINE).
+ *
+ * Every observation is signed by THIS DEVICE's dedicated indexer identity
+ * (indexerIdentity.ts) — never the user's personal Nostr key, and
+ * the event never contains a search query. The user's identity and the
+ * indexer identity are never linked on purpose.
+ *
+ * This is the same pattern as UNCAGED-ENGINE's src/lib/indexPublisher.ts.
+ */
+import { finalizeEvent } from 'nostr-tools/pure';
+import type { NostrEvent } from '@nostrify/nostrify';
 
-import type { CrawlResult } from './types';
+import { getIndexerIdentity, getIndexerSecretKey } from './indexerIdentity';
+import { buildIndexEvent, normalizeIndexUrl, type IndexObservationInput } from './webIndex';
+import { getIndexPublishRelays } from './relays';
 
-export type PublishFn = (event: {
-  kind: number;
-  content: string;
-  tags: string[][];
-}) => Promise<void>;
+/** Callback type for publishing a signed event to a relay. */
+export type RelayPublishFn = (relayUrl: string, event: NostrEvent) => Promise<void>;
 
-// Custom kind for Searchstr crawl results
-export const CRAWL_RESULT_KIND = 20002;
-// Custom kind for crawl requests (URL discovery)
-export const CRAWL_REQUEST_KIND = 20001;
+/** Injected relay publisher — wired up by the React hook. */
+let relayPublishFn: RelayPublishFn | null = null;
 
-let publishFn: PublishFn | null = null;
-
-export function setPublisher(fn: PublishFn) {
-  publishFn = fn;
+export function setRelayPublisher(fn: RelayPublishFn) {
+  relayPublishFn = fn;
 }
 
-export async function publishCrawlResult(result: CrawlResult): Promise<boolean> {
-  if (!publishFn) {
-    console.debug('[Crawler] No publisher configured, skipping Nostr publish');
-    return false;
-  }
+/** Publish a signed event to all index relays (best-effort). */
+async function publishToIndexRelays(signedEvent: NostrEvent): Promise<void> {
+  const relays = getIndexPublishRelays();
 
-  try {
-    const domain = new URL(result.url).hostname;
-
-    await publishFn({
-      kind: CRAWL_RESULT_KIND,
-      content: JSON.stringify({
-        title: result.title,
-        description: result.description,
-        word_count: result.wordCount,
-        protocol: 'searchstr/v1',
-      }),
-      tags: [
-        ['url', result.url],
-        ['d', result.url], // Use URL as d-tag for deduplication
-        ['domain', domain],
-        ['hash', result.contentHash],
-        ['status', String(result.status)],
-        ['content-type', result.contentType],
-        ['language', result.language],
-        ['protocol', 'searchstr/v1'],
-        ['alt', `Crawl result for ${result.url}`],
-      ],
-    });
-
-    return true;
-  } catch (error) {
-    console.error('[Crawler] Failed to publish to Nostr:', error);
-    return false;
+  if (relayPublishFn) {
+    await Promise.allSettled(
+      relays.map((url) => relayPublishFn!(url, signedEvent)),
+    );
+  } else {
+    // No relay publisher configured — log for debugging
+    console.debug('[Crawler] No relay publisher configured. Would publish to:', relays);
   }
 }
 
-export async function publishCrawlRequest(url: string, priority: number, depth: number): Promise<boolean> {
-  if (!publishFn) return false;
+/**
+ * Build, sign, and publish one web index observation.
+ *
+ * Returns the normalized URL on success, or null when the input is not
+ * indexable (non-http(s) URL, empty title). Relay failures are swallowed —
+ * indexing is best-effort and must never break the crawl loop.
+ */
+export async function publishIndexObservation(
+  input: IndexObservationInput,
+): Promise<string | null> {
+  const normalized = normalizeIndexUrl(input.url);
+  if (!normalized) return null;
 
-  try {
-    const domain = new URL(url).hostname;
+  const template = await buildIndexEvent({ ...input, url: normalized });
+  if (!template) return null;
 
-    await publishFn({
-      kind: CRAWL_REQUEST_KIND,
-      content: '',
-      tags: [
-        ['url', url],
-        ['domain', domain],
-        ['priority', String(priority)],
-        ['depth', String(depth)],
-        ['protocol', 'searchstr/v1'],
-        ['alt', `Crawl request for ${url}`],
-      ],
-    });
+  const signedEvent = finalizeEvent(
+    {
+      kind: template.kind,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: template.tags,
+      content: template.content,
+      pubkey: getIndexerIdentity().pubkeyHex,
+    },
+    getIndexerSecretKey(),
+  );
 
-    return true;
-  } catch (error) {
-    console.error('[Crawler] Failed to publish crawl request:', error);
-    return false;
-  }
+  await publishToIndexRelays(signedEvent);
+  return normalized;
+}
+
+/**
+ * Get the current indexer identity info for display purposes.
+ */
+export function getIndexerInfo(): { pubkeyHex: string; npub: string } {
+  const identity = getIndexerIdentity();
+  return {
+    pubkeyHex: identity.pubkeyHex,
+    npub: identity.npub,
+  };
 }
