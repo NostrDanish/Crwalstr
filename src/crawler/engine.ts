@@ -36,6 +36,10 @@ export class CrawlerEngine {
     skipped: 0,
     viaProxy: 0,
     viaDirect: 0,
+    robotsBlocked: 0,
+    fetchFailed: 0,
+    duplicates: 0,
+    thinContent: 0,
   };
   private abortController: AbortController | null = null;
   private onStatsChange?: (stats: CrawlerStats) => void;
@@ -170,6 +174,7 @@ export class CrawlerEngine {
         console.debug('[Crawler] Blocked by robots.txt:', job.url);
         await removeFromQueue(job.url);
         this.stats.skipped++;
+        this.stats.robotsBlocked++;
         return;
       }
     }
@@ -178,6 +183,7 @@ export class CrawlerEngine {
     const result = await fetchPage(job.url, this.settings.maxPageSizeKB);
     if (!result) {
       this.stats.errors++;
+      this.stats.fetchFailed++;
       job.attempts++;
       if (job.attempts >= 3) {
         await removeFromQueue(job.url);
@@ -195,6 +201,7 @@ export class CrawlerEngine {
     if (parsed.wordCount < 10) {
       await removeFromQueue(job.url);
       this.stats.skipped++;
+      this.stats.thinContent++;
       return;
     }
 
@@ -206,6 +213,7 @@ export class CrawlerEngine {
     if (duplicate) {
       await removeFromQueue(job.url);
       this.stats.skipped++;
+      this.stats.duplicates++;
       return;
     }
 

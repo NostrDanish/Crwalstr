@@ -43,6 +43,14 @@ export interface CrawlerStats {
   viaProxy: number;
   /** Pages fetched directly because the site sends CORS headers. */
   viaDirect: number;
+  /** Skipped because the site's robots.txt disallows crawling. */
+  robotsBlocked: number;
+  /** Could not be retrieved at all (network, proxy, timeout, non-HTML). */
+  fetchFailed: number;
+  /** Skipped because identical content was already indexed. */
+  duplicates: number;
+  /** Skipped for having almost no extractable text (JS-rendered SPAs). */
+  thinContent: number;
 }
 
 export interface CrawlerSettings {

@@ -51,6 +51,19 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
+/**
+ * Seeds that are actually crawlable from a browser: open content, permissive
+ * robots.txt, server-rendered HTML. Big platforms disallow crawling, so seeding
+ * them produces an empty index and looks like a broken app.
+ */
+const SUGGESTED_SEEDS = [
+  'https://en.wikipedia.org/wiki/Nostr',
+  'https://bitcoin.org',
+  'https://nostr.com',
+  'https://news.ycombinator.com',
+  'https://lobste.rs',
+];
+
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
@@ -160,6 +173,54 @@ export function CrawlerDashboard() {
           </CardContent>
         )}
       </Card>
+
+      {/* Why pages were skipped — otherwise "0 indexed" looks like a broken app */}
+      {(stats.skipped > 0 || stats.fetchFailed > 0) && (
+        <Card className="border-yellow-500/40 bg-yellow-500/5">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 shrink-0" />
+              <p className="text-sm font-medium">
+                Why pages weren't indexed
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div>
+                <div className="font-bold">{stats.robotsBlocked.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">robots.txt disallowed</div>
+              </div>
+              <div>
+                <div className="font-bold">{stats.fetchFailed.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">unreachable</div>
+              </div>
+              <div>
+                <div className="font-bold">{stats.thinContent.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">too little text</div>
+              </div>
+              <div>
+                <div className="font-bold">{stats.duplicates.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">duplicate content</div>
+              </div>
+            </div>
+
+            {stats.robotsBlocked > 0 && stats.pagesIndexed === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Most large platforms (Google, YouTube, Facebook, X) disallow
+                crawling in their robots.txt, so they're skipped by design. Try a
+                crawler-friendly seed from the Seed URLs tab.
+              </p>
+            )}
+
+            {stats.thinContent > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Pages with little text are usually JavaScript-rendered apps —
+                Crawlstr parses static HTML only.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Indexer Identity Card */}
       {indexerInfo && (
@@ -275,6 +336,31 @@ export function CrawlerDashboard() {
                   <Plus className="h-4 w-4 mr-1" />
                   Add
                 </Button>
+              </div>
+
+              {/* Crawler-friendly starting points */}
+              <div className="rounded-lg border border-dashed p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Crawler-friendly seeds (open content, permissive robots.txt)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_SEEDS.map((url) => (
+                    <Button
+                      key={url}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs font-mono"
+                      onClick={() => seedUrl(url)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      {url.replace('https://', '')}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Large platforms (Google, YouTube, Facebook, X) disallow crawling
+                  in robots.txt and are skipped by design.
+                </p>
               </div>
 
               <Separator />

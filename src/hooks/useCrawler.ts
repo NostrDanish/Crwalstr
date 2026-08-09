@@ -21,6 +21,10 @@ export function useCrawler() {
     skipped: 0,
     viaProxy: 0,
     viaDirect: 0,
+    robotsBlocked: 0,
+    fetchFailed: 0,
+    duplicates: 0,
+    thinContent: 0,
   });
   const [recentCrawls, setRecentCrawls] = useState<Array<{
     url: string;
