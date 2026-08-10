@@ -1,40 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!-- Crawlstr mark: a spider whose legs double as a network graph -->
-  <g stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Web arcs behind the body -->
-    <path d="M12 26a20 20 0 0 1 40 0" opacity=".35"/>
-    <path d="M18 34a14 14 0 0 1 28 0" opacity=".2"/>
+  <!--
+    Crawlstr mark: a spider sitting in its web.
+    Web dome behind, two-part body (head + abdomen) with eyes, angular legs.
+  -->
 
-    <!-- Left legs -->
-    <path d="M26 30 16 22 8 26"/>
-    <path d="M26 34 14 34 6 39"/>
-    <path d="M26 38 16 45 10 53"/>
-    <path d="M28 41 24 50 26 58"/>
+  <!-- ============ Web (behind the spider) ============ -->
+  <g stroke="#22c55e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Centre spoke (straight up) -->
+    <path d="M32 28 L32 5"/>
 
-    <!-- Right legs -->
-    <path d="M38 30 48 22 56 26"/>
-    <path d="M38 34 50 34 58 39"/>
-    <path d="M38 38 48 45 54 53"/>
-    <path d="M36 41 40 50 38 58"/>
+    <!-- Left half: spokes + concentric rings -->
+    <g>
+      <path d="M32 28 L18.8 9.2"/>
+      <path d="M32 28 L10.7 19.4"/>
+      <path d="M32 28 L9.3 32"/>
+      <path d="M32 5 Q24.7 5 18.8 9.2 Q13 12.9 10.7 19.4 Q7.8 25.5 9.3 32"/>
+      <path d="M32 12 Q26.9 12 22.8 14.9 Q18.8 17.5 17.2 22 Q15.2 26.2 16.2 30.8"/>
+      <path d="M32 19 Q29.1 19 26.8 20.6 Q24.6 22.1 23.7 24.6 Q22.5 27 23.1 29.6"/>
+    </g>
+
+    <!-- Right half: exact mirror of the left -->
+    <g transform="translate(64 0) scale(-1 1)">
+      <path d="M32 28 L18.8 9.2"/>
+      <path d="M32 28 L10.7 19.4"/>
+      <path d="M32 28 L9.3 32"/>
+      <path d="M32 5 Q24.7 5 18.8 9.2 Q13 12.9 10.7 19.4 Q7.8 25.5 9.3 32"/>
+      <path d="M32 12 Q26.9 12 22.8 14.9 Q18.8 17.5 17.2 22 Q15.2 26.2 16.2 30.8"/>
+      <path d="M32 19 Q29.1 19 26.8 20.6 Q24.6 22.1 23.7 24.6 Q22.5 27 23.1 29.6"/>
+    </g>
   </g>
 
-  <!-- Node dots at the leg tips (the "network" read) -->
-  <g fill="#22c55e">
-    <circle cx="8" cy="26" r="2.6"/>
-    <circle cx="6" cy="39" r="2.6"/>
-    <circle cx="10" cy="53" r="2.6"/>
-    <circle cx="26" cy="58" r="2.6"/>
-    <circle cx="56" cy="26" r="2.6"/>
-    <circle cx="58" cy="39" r="2.6"/>
-    <circle cx="54" cy="53" r="2.6"/>
-    <circle cx="38" cy="58" r="2.6"/>
+  <!-- ============ Legs (drawn before the body so joints tuck behind) ============ -->
+  <g stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <g>
+      <path d="M26.5 33 L18 25 L14.5 33"/>
+      <path d="M25.5 38 L15.5 34 L11 42"/>
+      <path d="M24.5 44 L14.5 44 L10.5 52"/>
+      <path d="M26 50 L18.5 54 L15.5 61"/>
+    </g>
+    <g transform="translate(64 0) scale(-1 1)">
+      <path d="M26.5 33 L18 25 L14.5 33"/>
+      <path d="M25.5 38 L15.5 34 L11 42"/>
+      <path d="M24.5 44 L14.5 44 L10.5 52"/>
+      <path d="M26 50 L18.5 54 L15.5 61"/>
+    </g>
   </g>
 
-  <!-- Body -->
-  <ellipse cx="32" cy="35" rx="9" ry="11" fill="#22c55e"/>
-  <!-- Head -->
-  <circle cx="32" cy="23" r="5.5" fill="#22c55e"/>
+  <!-- ============ Body ============ -->
+  <ellipse cx="32" cy="45" rx="8.5" ry="10" fill="#22c55e"/>
+  <circle cx="32" cy="33" r="7" fill="#22c55e"/>
+
   <!-- Eyes -->
-  <circle cx="30" cy="22" r="1.35" fill="#0a0a0a"/>
-  <circle cx="34" cy="22" r="1.35" fill="#0a0a0a"/>
+  <circle cx="29.4" cy="32" r="1.5" fill="#0a120d"/>
+  <circle cx="34.6" cy="32" r="1.5" fill="#0a120d"/>
 </svg>
