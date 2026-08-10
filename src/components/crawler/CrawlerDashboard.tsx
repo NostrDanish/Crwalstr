@@ -125,8 +125,8 @@ export function CrawlerDashboard() {
                 <CrawlstrLogo
                   animated={isRunning}
                   className={cn(
-                    'h-7 w-7',
-                    isRunning ? 'text-primary' : 'text-muted-foreground',
+                    'h-7 w-7 rounded-md',
+                    !isRunning && 'opacity-60 grayscale',
                   )}
                 />
               </div>

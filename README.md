@@ -1,5 +1,9 @@
 # Crawlstr
 
+<p align="center">
+  <img src="public/brand/logo.png" alt="Crawlstr — a spider sitting in its web" width="192" height="192">
+</p>
+
 **Decentralized browser-based web crawler.** Turn your browser into a voluntary crawl node that feeds the shared [SIP-01](https://github.com/NostrDanish/0xSearchstr/blob/main/docs/SEARCH_INDEX_PROTOCOL.md) index on Nostr. No backend. No tracking. No accounts required.
 
 Every page you crawl becomes a **kind 39697 web index observation** — instantly searchable by [0xSearchstr](https://0xsearchstr.shakespeare.wtf), [0xPresearchstr](https://presearchstr.shakespeare.wtf), [UNCAGED](https://uncaged.shakespeare.wtf), and any future SIP-01 compatible client.

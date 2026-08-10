@@ -18,7 +18,7 @@ const Index = () => {
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
         <div className="container max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <CrawlstrLogo className="h-7 w-7 shrink-0" />
+            <CrawlstrLogo className="h-8 w-8 shrink-0 rounded-md" />
             <span className="font-bold text-lg tracking-tight">Crawlstr</span>
             <span className="text-xs text-muted-foreground hidden sm:inline">
               Decentralized Web Crawler
@@ -40,7 +40,7 @@ const Index = () => {
         />
 
         <div className="text-center space-y-4 max-w-2xl mx-auto">
-          <CrawlstrLogo className="h-20 w-20 mx-auto motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-500" />
+          <CrawlstrLogo className="h-24 w-24 mx-auto rounded-2xl shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-500" />
 
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
             <Globe className="h-3.5 w-3.5" />
@@ -201,7 +201,7 @@ const Index = () => {
         <div className="container max-w-6xl mx-auto px-4 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CrawlstrLogo className="h-5 w-5 shrink-0" />
+              <CrawlstrLogo className="h-5 w-5 shrink-0 rounded" />
               <span>Crawlstr — Decentralized Web Crawler Network</span>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
