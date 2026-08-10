@@ -1,56 +1,64 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <!--
-    Crawlstr mark: a spider sitting in its web.
-    Web dome behind, two-part body (head + abdomen) with eyes, angular legs.
+    Crawlstr mark — spider sitting in a fan-shaped web.
+
+    Geometry: web hub at (32,34), radius 30. Seven spokes at 0°, ±39°, ±78°,
+    ±117° from vertical, each ending in a rounded ball tip. Three rings of
+    silk sag inward between the spokes (quadratic controls pulled to 0.85r).
+    Legs are drawn over the web, body over the legs.
   -->
 
-  <!-- ============ Web (behind the spider) ============ -->
-  <g stroke="#22c55e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Centre spoke (straight up) -->
-    <path d="M32 28 L32 5"/>
+  <g stroke="#22c55e" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- ===== Web silk ===== -->
+    <g stroke-width="1.9">
+      <!-- Spokes (inner ends tuck behind the body) -->
+      <path d="M32 28V4"/>
+      <path d="M28.22 29.34 13.12 10.69"/>
+      <path d="M35.78 29.34 50.88 10.69"/>
+      <path d="M26.13 32.75 2.66 27.76"/>
+      <path d="M37.87 32.75 61.34 27.76"/>
+      <path d="M26.65 36.72 5.27 47.62"/>
+      <path d="M37.35 36.72 58.73 47.62"/>
 
-    <!-- Left half: spokes + concentric rings -->
-    <g>
-      <path d="M32 28 L18.8 9.2"/>
-      <path d="M32 28 L10.7 19.4"/>
-      <path d="M32 28 L9.3 32"/>
-      <path d="M32 5 Q24.7 5 18.8 9.2 Q13 12.9 10.7 19.4 Q7.8 25.5 9.3 32"/>
-      <path d="M32 12 Q26.9 12 22.8 14.9 Q18.8 17.5 17.2 22 Q15.2 26.2 16.2 30.8"/>
-      <path d="M32 19 Q29.1 19 26.8 20.6 Q24.6 22.1 23.7 24.6 Q22.5 27 23.1 29.6"/>
+      <!-- Outer ring (r=30) -->
+      <path d="M5.27 47.62Q6.72 37.33 2.66 27.76Q10.26 20.68 13.12 10.69Q23.49 9.96 32 4Q40.51 9.96 50.88 10.69Q53.74 20.68 61.34 27.76Q57.28 37.33 58.73 47.62"/>
+
+      <!-- Middle ring (r=20.5) -->
+      <path d="M13.73 43.31Q14.73 36.27 11.95 29.74Q17.14 24.9 19.1 18.07Q26.18 17.57 32 13.5Q37.82 17.57 44.9 18.07Q46.86 24.9 52.05 29.74Q49.27 36.27 50.27 43.31"/>
+
+      <!-- Inner ring (r=12.5) -->
+      <path d="M19.77 31.4Q22.94 28.45 24.13 24.29Q28.45 23.98 32 21.5Q35.55 23.98 39.87 24.29Q41.06 28.45 44.23 31.4"/>
     </g>
 
-    <!-- Right half: exact mirror of the left -->
-    <g transform="translate(64 0) scale(-1 1)">
-      <path d="M32 28 L18.8 9.2"/>
-      <path d="M32 28 L10.7 19.4"/>
-      <path d="M32 28 L9.3 32"/>
-      <path d="M32 5 Q24.7 5 18.8 9.2 Q13 12.9 10.7 19.4 Q7.8 25.5 9.3 32"/>
-      <path d="M32 12 Q26.9 12 22.8 14.9 Q18.8 17.5 17.2 22 Q15.2 26.2 16.2 30.8"/>
-      <path d="M32 19 Q29.1 19 26.8 20.6 Q24.6 22.1 23.7 24.6 Q22.5 27 23.1 29.6"/>
-    </g>
-  </g>
-
-  <!-- ============ Legs (drawn before the body so joints tuck behind) ============ -->
-  <g stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-    <g>
-      <path d="M26.5 33 L18 25 L14.5 33"/>
-      <path d="M25.5 38 L15.5 34 L11 42"/>
-      <path d="M24.5 44 L14.5 44 L10.5 52"/>
-      <path d="M26 50 L18.5 54 L15.5 61"/>
-    </g>
-    <g transform="translate(64 0) scale(-1 1)">
-      <path d="M26.5 33 L18 25 L14.5 33"/>
-      <path d="M25.5 38 L15.5 34 L11 42"/>
-      <path d="M24.5 44 L14.5 44 L10.5 52"/>
-      <path d="M26 50 L18.5 54 L15.5 61"/>
+    <!-- ===== Legs (over the web) ===== -->
+    <g stroke-width="2.6">
+      <path d="M25 35 17 27 11.5 24.5"/>
+      <path d="M24 40 13 35 8.5 34"/>
+      <path d="M24 45 13 44 9.5 49"/>
+      <path d="M26 50 16.5 53 12.5 58"/>
+      <path d="M39 35 47 27 52.5 24.5"/>
+      <path d="M40 40 51 35 55.5 34"/>
+      <path d="M40 45 51 44 54.5 49"/>
+      <path d="M38 50 47.5 53 51.5 58"/>
     </g>
   </g>
 
-  <!-- ============ Body ============ -->
-  <ellipse cx="32" cy="45" rx="8.5" ry="10" fill="#22c55e"/>
-  <circle cx="32" cy="33" r="7" fill="#22c55e"/>
+  <!-- Ball tips at the spoke ends -->
+  <g fill="#22c55e">
+    <circle cx="32" cy="4" r="1.5"/>
+    <circle cx="13.12" cy="10.69" r="1.5"/>
+    <circle cx="50.88" cy="10.69" r="1.5"/>
+    <circle cx="2.66" cy="27.76" r="1.5"/>
+    <circle cx="61.34" cy="27.76" r="1.5"/>
+    <circle cx="5.27" cy="47.62" r="1.5"/>
+    <circle cx="58.73" cy="47.62" r="1.5"/>
+  </g>
+
+  <!-- ===== Body ===== -->
+  <ellipse cx="32" cy="49.5" rx="9.8" ry="10.6" fill="#22c55e"/>
+  <circle cx="32" cy="32.5" r="8.7" fill="#22c55e"/>
 
   <!-- Eyes -->
-  <circle cx="29.4" cy="32" r="1.5" fill="#0a120d"/>
-  <circle cx="34.6" cy="32" r="1.5" fill="#0a120d"/>
+  <circle cx="27.8" cy="33" r="1.7" fill="#0a120d"/>
+  <circle cx="36.2" cy="33" r="1.7" fill="#0a120d"/>
 </svg>
