@@ -8,11 +8,16 @@ export interface CrawlstrLogoProps extends React.SVGProps<SVGSVGElement> {
 /**
  * The Crawlstr mark — a spider sitting in its web.
  *
- * Traced from the reference artwork. Web hub is at (32,30) with radius 18;
- * seven spokes at 0°, ±37°, ±80°, ±124° from vertical, each capped with a
- * ball tip. Three courses of silk sag inward between the spokes to give the
- * chevron shape. Layer order is web -> ball tips -> legs -> body, so the head
- * hides the hub and the leg joints tuck behind the body.
+ * Measured from the reference artwork:
+ *  - Web hub (32,31), radius 26. Seven spokes at 0°, ±39°, ±81°, ±123° from
+ *    vertical, each capped with a bulbous ball tip. Three courses of silk sag
+ *    to 0.78r between spokes, producing the deep V chevrons.
+ *  - Head r=7.8 sits ON the hub, hiding the spoke convergence point.
+ *  - Abdomen 8.5×9.5 at y=46.5, overlapping the head slightly.
+ *  - Three legs per side, two segments each; the top pair elbows UP.
+ *
+ * Layer order is web -> ball tips -> legs -> body, so leg roots and the hub
+ * are covered by the body.
  *
  * Uses `currentColor` so it inherits text color and works in both themes —
  * set it with a Tailwind text utility, e.g. `className="text-primary"`.
@@ -30,55 +35,55 @@ export function CrawlstrLogo({ animated = false, className, ...props }: Crawlstr
     >
       <g stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" fill="none">
         {/* ===== Web silk ===== */}
-        <g strokeWidth={1.8} className={cn(animated && 'motion-safe:animate-pulse')}>
-          {/* Spokes — inner ends are covered by the head */}
-          <path d="M32 30 32 12" />
-          <path d="M32 30 21.2 15.6" />
-          <path d="M32 30 42.8 15.6" />
-          <path d="M32 30 14.3 26.9" />
-          <path d="M32 30 49.7 26.9" />
-          <path d="M32 30 17.1 40.1" />
-          <path d="M32 30 46.9 40.1" />
+        <g strokeWidth={2.4} className={cn(animated && 'motion-safe:animate-pulse')}>
+          {/* Spokes — inner ends hidden by the head */}
+          <path d="M32 31 32 5" />
+          <path d="M32 31 15.64 10.79" />
+          <path d="M32 31 48.36 10.79" />
+          <path d="M32 31 6.32 26.93" />
+          <path d="M32 31 57.68 26.93" />
+          <path d="M32 31 10.19 45.16" />
+          <path d="M32 31 53.81 45.16" />
 
-          {/* Outer course */}
-          <path d="M17.1 40.1Q17.9 33 14.3 26.9Q19.7 22.5 21.2 15.6Q27.4 16.4 32 12Q36.6 16.4 42.8 15.6Q44.3 22.5 49.7 26.9Q46.1 33 46.9 40.1" />
+          {/* Outer course (r=26) */}
+          <path d="M10.19 45.16Q16.25 34.35 6.32 26.93Q18.06 22.95 15.64 10.79Q26.62 15.82 32 5Q37.38 15.82 48.36 10.79Q45.94 22.95 57.68 26.93Q47.75 34.35 53.81 45.16" />
 
-          {/* Middle course */}
-          <path d="M22.6 36.3Q23.1 31.9 20.8 28Q24.3 25.3 25.2 20.9Q29.1 21.4 32 18.7Q34.9 21.4 38.8 20.9Q39.7 25.3 43.2 28Q40.9 31.9 41.4 36.3" />
+          {/* Middle course (r=16.4) */}
+          <path d="M18.25 39.93Q22.02 33.12 15.8 28.44Q23.17 25.9 21.68 18.26Q28.59 21.39 32 14.6Q35.41 21.39 42.32 18.26Q40.83 25.9 48.2 28.44Q41.98 33.12 45.75 39.93" />
 
-          {/* Inner course */}
-          <path d="M24.9 28.8Q27.1 27 27.7 24.3Q30.2 24.5 32 22.8Q33.8 24.5 36.3 24.3Q36.9 27 39.1 28.8" />
+          {/* Inner course (r=11.7) */}
+          <path d="M20.44 29.17Q25.72 27.37 24.64 21.91Q29.58 24.17 32 19.3Q34.42 24.17 39.36 21.91Q38.28 27.37 43.56 29.17" />
         </g>
 
-        {/* ===== Legs (over the web) ===== */}
-        <g strokeWidth={2.4}>
-          <path d="M27.5 33 20.5 26.5 17.5 33" />
-          <path d="M26.5 36 21 34.5 17 40.5" />
-          <path d="M27 39.5 22 41.5 20 47.5" />
-          <path d="M36.5 33 43.5 26.5 46.5 33" />
-          <path d="M37.5 36 43 34.5 47 40.5" />
-          <path d="M37 39.5 42 41.5 44 47.5" />
+        {/* ===== Legs (three per side, over the web, under the body) ===== */}
+        <g strokeWidth={2.8}>
+          <path d="M28.5 27.5 17.5 24.5 17 33" />
+          <path d="M25.5 35 12 38.5 15.5 46.5" />
+          <path d="M24.5 43 16.5 47 14 55.5" />
+          <path d="M35.5 27.5 46.5 24.5 47 33" />
+          <path d="M38.5 35 52 38.5 48.5 46.5" />
+          <path d="M39.5 43 47.5 47 50 55.5" />
         </g>
       </g>
 
       {/* Ball tips */}
       <g fill="currentColor">
-        <circle cx="32" cy="12" r="1.2" />
-        <circle cx="21.2" cy="15.6" r="1.2" />
-        <circle cx="42.8" cy="15.6" r="1.2" />
-        <circle cx="14.3" cy="26.9" r="1.2" />
-        <circle cx="49.7" cy="26.9" r="1.2" />
-        <circle cx="17.1" cy="40.1" r="1.2" />
-        <circle cx="46.9" cy="40.1" r="1.2" />
+        <circle cx="32" cy="5" r="2" />
+        <circle cx="15.64" cy="10.79" r="2" />
+        <circle cx="48.36" cy="10.79" r="2" />
+        <circle cx="6.32" cy="26.93" r="2" />
+        <circle cx="57.68" cy="26.93" r="2" />
+        <circle cx="10.19" cy="45.16" r="2" />
+        <circle cx="53.81" cy="45.16" r="2" />
       </g>
 
       {/* ===== Body ===== */}
-      <ellipse cx="32" cy="41.5" rx="6.4" ry="6.6" fill="currentColor" />
-      <circle cx="32" cy="31" r="5.4" fill="currentColor" />
+      <ellipse cx="32" cy="46.5" rx="8.5" ry="9.5" fill="currentColor" />
+      <circle cx="32" cy="31" r="7.8" fill="currentColor" />
 
       {/* Eyes — punch through to the background so they work in both themes */}
-      <circle cx="29.4" cy="30.3" r="1.35" className="fill-background" />
-      <circle cx="34.6" cy="30.3" r="1.35" className="fill-background" />
+      <circle cx="28.2" cy="31.5" r="1.5" className="fill-background" />
+      <circle cx="35.8" cy="31.5" r="1.5" className="fill-background" />
     </svg>
   );
 }
