@@ -1,6 +1,7 @@
 /**
  * Index publisher — signs and publishes SIP-01 web index observations
- * (kind 39697, see docs/SEARCH_INDEX_PROTOCOL.md in 0xSearchstr/UNCAGED-ENGINE).
+ * (kind 39697). Canonical spec: https://github.com/NostrDanish/SIP-01
+ * (public/spec/SIP-01.md, v1.1).
  *
  * Every observation is signed by THIS DEVICE's dedicated indexer identity
  * (indexerIdentity.ts) — never the user's personal Nostr key, and

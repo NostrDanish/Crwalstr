@@ -4,7 +4,7 @@
   <img src="public/brand/logo.png" alt="Crawlstr — a spider sitting in its web" width="192" height="192">
 </p>
 
-**Decentralized browser-based web crawler.** Turn your browser into a voluntary crawl node that feeds the shared [SIP-01](https://github.com/NostrDanish/0xSearchstr/blob/main/docs/SEARCH_INDEX_PROTOCOL.md) index on Nostr. No backend. No tracking. No accounts required.
+**Decentralized browser-based web crawler.** Turn your browser into a voluntary crawl node that feeds the shared [SIP-01](https://github.com/NostrDanish/SIP-01) index on Nostr — the canonical [Search Index Protocol v1.1](https://github.com/NostrDanish/SIP-01/blob/main/public/spec/SIP-01.md). No backend. No tracking. No accounts required.
 
 Every page you crawl becomes a **kind 39697 web index observation** — instantly searchable by [0xSearchstr](https://0xsearchstr.shakespeare.wtf), [0xPresearchstr](https://presearchstr.shakespeare.wtf), [UNCAGED](https://uncaged.shakespeare.wtf), and any future SIP-01 compatible client.
 
@@ -137,6 +137,8 @@ Crawlstr publishes **SIP-01 (Search Index Protocol)** events — the same protoc
     ["x", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
     ["v", "1"],
     ["source", "crawlstr/1"],
+    ["network", "clearnet"],
+    ["type", "page"],
     ["alt", "Web index observation: Example Page"]
   ]
 }
@@ -145,14 +147,16 @@ Crawlstr publishes **SIP-01 (Search Index Protocol)** events — the same protoc
 | Tag | Meaning |
 |-----|---------|
 | `d` | `"widx:" + sha256(normalized_url)[0:32]` — URL identity, identical across all indexers |
-| `u` | Canonical URL (normalized per SIP-01 §8) |
+| `u` | Canonical URL (normalized per SIP-01 §7) |
 | `x` | Content hash: `sha256(title + "\n" + description)` |
 | `v` | Schema version `"1"` |
 | `l` | ISO 639-1 language code |
 | `source` | `"crawlstr/1"` |
-| `alt` | NIP-31 human-readable description |
+| `network` | Extension registry (§9.2) — always `clearnet` for a browser crawler |
+| `type` | Extension registry — `repository` for GitHub/GitLab, else `page` |
+| `alt` | Human-readable description (the `alt` convention, spec §12.3) |
 
-Full schema documentation: [NIP.md](NIP.md)
+Full schema documentation: [NIP.md](NIP.md) · Canonical spec: [SIP-01 v1.1](https://github.com/NostrDanish/SIP-01/blob/main/public/spec/SIP-01.md)
 
 ### Relay Pool
 

@@ -13,6 +13,10 @@ export interface CrawlJob {
 export interface ParsedPage {
   title: string;
   description: string;
+  /** Representative image (og:image / twitter:image). */
+  image?: string;
+  /** Claimed publication time, unix seconds (SIP-01 `published` tag). */
+  published?: number;
   text: string;
   language: string;
   links: string[];

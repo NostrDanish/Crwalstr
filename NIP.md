@@ -1,11 +1,13 @@
 # Crawlstr — Event Kinds & Protocol Reference
 
 Crawlstr is a **browser-based web crawler** that publishes to the **shared SIP-01
-(Search Index Protocol) index** on Nostr. It uses the exact same event kinds,
-tags, URL normalization, and schemas as
+(Search Index Protocol) index** on Nostr. It implements the **canonical SIP-01
+specification v1.1** — [github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)
+(`public/spec/SIP-01.md`) — byte-compatibly with
 [0xSearchstr](https://github.com/NostrDanish/0xSearchstr),
-[0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr), and
-[UNCAGED-ENGINE](https://github.com/NostrDanish/UNCAGED-ENGINE).
+[0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr),
+[UNCAGED-ENGINE](https://github.com/NostrDanish/UNCAGED-ENGINE), and the
+[UNCAGED Index Relay](https://github.com/NostrDanish/UNCAGED-Index-Relay).
 
 ## Protocol Compatibility
 
@@ -36,32 +38,46 @@ public metadata."*
     ["l", "en"],
     ["x", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
     ["v", "1"],
+    ["published", "1786200000"],
     ["source", "crawlstr/1"],
+    ["network", "clearnet"],
+    ["type", "page"],
     ["alt", "Web index observation: Example Page"]
   ]
 }
 ```
 
-**Tags:**
+**Core tags (spec §5/§6):**
 
 | Tag | Required | Meaning |
 |-----|----------|---------|
 | `d` | ✔ | `"widx:" + sha256(normalized_url)[0:32]` — URL identity, identical across all indexers |
-| `u` | ✔ | Canonical URL (http/https only, normalized per SIP-01 §8) |
+| `u` | ✔ | Canonical URL (http/https only, ≤ 2048 chars, normalized per SIP-01 §7) |
 | `v` | ✔ | Schema version `"1"` |
-| `x` | ✔ | Content hash: `sha256(title + "\n" + description)` |
-| `l` | – | ISO 639-1 language code |
-| `source` | – | `"crawlstr/1"` — identifies this software |
-| `alt` | ✔ | NIP-31 human-readable description |
+| `x` | ✔ | Content hash: `sha256(title + "\n" + description)` (§8) |
+| `alt` | ✔ | Human-readable summary (the `alt` convention; spec §12.3) |
+| `l` | – | ISO 639-1 language code (validated two-letter shape) |
+| `t` | – | 0–8 lowercase topic tags matching `^[a-z0-9][a-z0-9-]{0,99}$` |
+| `published` | – | Unix seconds — page's claimed publication time (§12.2) |
+| `source` | – | `"crawlstr/1"` — identifies this software (≤ 100 chars) |
+
+**Extension tags (spec §9.2 registry):**
+
+| Tag | Value | Meaning |
+|-----|-------|---------|
+| `network` | always `clearnet` | A browser crawler can only reach the clearnet |
+| `type` | `page` / `repository` | `repository` for GitHub/GitLab hosts, else `page` |
+| `platform` | e.g. `github`, `youtube`, `wikipedia` | Emitted for well-known hosts only |
 
 **Key properties (same as all SIP-01 publishers):**
 
 - **Per-device indexer identity** — each browser generates its own anonymous keypair
-  on first use (`localStorage: sip:indexer:secret`). Never the user's personal key.
+  on first use (`localStorage: sip:indexer:secret`). Never the user's personal key (§14).
 - **No query leakage** — the event contains a URL and public page metadata, never
-  what anyone searched for.
-- **URL normalization** — identical to SIP-01 §8: strips tracking params, lowercases
-  host, removes `www.`, sorts query params, removes fragments.
+  what anyone searched for (§16).
+- **URL normalization** — identical to SIP-01 §7: strips tracking params, lowercases
+  scheme/host, removes `www.`, sorts query params, removes fragments. Verified
+  byte-identical against the §13 test vectors.
 - **Deduplication** — the `d` tag is deterministic from the normalized URL; the
   `x` tag is a content agreement signal. Multiple crawlers observing the same page
   produce events with the same `d` — search nodes count distinct authors.
@@ -118,12 +134,13 @@ Or browse by topic:
 }
 ```
 
-Or query full-text via NIP-50 (on capable relays):
+Or query full-text via NIP-50 on SIP-01-aware relays, using the web-search
+operators from spec §15 (`site:`, `title:`, `lang:`, `after:`, …):
 
 ```json
 {
   "kinds": [39697],
-  "search": "bitcoin privacy",
+  "search": "bitcoin privacy site:nostr.com lang:en after:2026-01-01",
   "limit": 20
 }
 ```
@@ -138,6 +155,9 @@ Or query full-text via NIP-50 (on capable relays):
 
 ## References
 
-- **SIP-01 Spec:** [0xSearchstr/docs/SEARCH_INDEX_PROTOCOL.md](https://github.com/NostrDanish/0xSearchstr/blob/main/docs/SEARCH_INDEX_PROTOCOL.md)
+- **Canonical spec (v1.1):** [NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01) — `public/spec/SIP-01.md`
+- **Implementation guide:** [SIP-01/docs/IMPLEMENTATION-GUIDE.md](https://github.com/NostrDanish/SIP-01/blob/main/docs/IMPLEMENTATION-GUIDE.md)
+- **Reference port:** [SIP-01/src/lib/sip01-utils.ts](https://github.com/NostrDanish/SIP-01/blob/main/src/lib/sip01-utils.ts)
 - **0xSearchstr NIP.md:** [legacy schemas, community submissions, Nostra interop](https://github.com/NostrDanish/0xSearchstr/blob/main/NIP.md)
 - **UNCAGED-ENGINE NIP.md:** [reference implementation schemas](https://github.com/NostrDanish/UNCAGED-ENGINE/blob/main/NIP.md)
+- **UNCAGED Index Relay:** [validating relay profile](https://github.com/NostrDanish/UNCAGED-Index-Relay)

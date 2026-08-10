@@ -17,6 +17,30 @@ export function parsePage(html: string, baseUrl: string): ParsedPage {
     doc.querySelector('meta[property="og:description"]')?.getAttribute('content')?.trim() ??
     '';
 
+  // Representative image (SIP-01 §6: https-only, enforced at build time too).
+  // og:image content is frequently relative — resolve against the page URL.
+  const imageRaw =
+    doc.querySelector('meta[property="og:image"]')?.getAttribute('content')?.trim() ??
+    doc.querySelector('meta[name="twitter:image"]')?.getAttribute('content')?.trim() ??
+    '';
+  let image = '';
+  if (imageRaw) {
+    try {
+      image = new URL(imageRaw, baseUrl).href;
+    } catch {
+      image = '';
+    }
+  }
+
+  // Claimed publication time (SIP-01 §6: `published` tag, unix seconds)
+  const publishedRaw =
+    doc.querySelector('meta[property="article:published_time"]')?.getAttribute('content')?.trim() ??
+    doc.querySelector('meta[name="date"]')?.getAttribute('content')?.trim() ??
+    doc.querySelector('time[datetime]')?.getAttribute('datetime')?.trim() ??
+    '';
+  const publishedTs = publishedRaw ? Math.floor(new Date(publishedRaw).getTime() / 1000) : NaN;
+  const published = Number.isFinite(publishedTs) ? publishedTs : undefined;
+
   // Remove non-content elements
   const removeSelectors = 'script, style, noscript, iframe, nav, footer, header, aside, [role="navigation"], [role="banner"], [role="contentinfo"], .nav, .navbar, .sidebar, .footer, .header, .menu, .ad, .ads, .advertisement, .social-share, .comments';
   doc.querySelectorAll(removeSelectors).forEach(el => el.remove());
@@ -58,6 +82,8 @@ export function parsePage(html: string, baseUrl: string): ParsedPage {
   return {
     title,
     description,
+    image,
+    published,
     text: text.slice(0, 10000), // Cap text at 10k chars for storage
     language,
     links: [...new Set(links)], // Deduplicate

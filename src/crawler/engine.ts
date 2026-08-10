@@ -23,6 +23,24 @@ import {
 } from './queue';
 import { DEFAULT_SETTINGS, type CrawlerStats, type CrawlerSettings, type CrawlJob } from './types';
 
+/**
+ * Map well-known hosts to SIP-01 §9.2 `platform` extension values.
+ * Deliberately small — an unrecognised host simply gets no platform tag.
+ */
+function detectPlatform(host: string): string | undefined {
+  const h = host.toLowerCase();
+  if (h === 'github.com' || h.endsWith('.github.com') || h.endsWith('.github.io')) return 'github';
+  if (h === 'gitlab.com' || h.endsWith('.gitlab.com')) return 'gitlab';
+  if (h === 'youtube.com' || h === 'youtu.be' || h.endsWith('.youtube.com')) return 'youtube';
+  if (h === 'wikipedia.org' || h.endsWith('.wikipedia.org')) return 'wikipedia';
+  if (h === 'medium.com' || h.endsWith('.medium.com')) return 'medium';
+  if (h === 'dev.to') return 'devto';
+  if (h === 'news.ycombinator.com') return 'hackernews';
+  if (h.endsWith('.reddit.com') || h === 'reddit.com') return 'reddit';
+  if (h === 'stackoverflow.com' || h.endsWith('.stackexchange.com')) return 'stackoverflow';
+  return undefined;
+}
+
 export class CrawlerEngine {
   private running = false;
   private startTime = 0;
@@ -228,14 +246,22 @@ export class CrawlerEngine {
     else this.stats.viaDirect++;
     this.stats.queueSize = await getQueueSize();
 
-    // Publish SIP-01 observation to the shared index (kind 39697)
-    // This is the same protocol used by 0xSearchstr, 0xPresearchstr, UNCAGED-ENGINE
+    // Publish SIP-01 v1.1 observation to the shared index (kind 39697).
+    // Canonical spec: https://github.com/NostrDanish/SIP-01
+    const host = new URL(job.url).hostname;
+    const platform = detectPlatform(host);
     await publishIndexObservation({
       url: job.url,
       title: parsed.title,
       description: parsed.description,
+      image: parsed.image,
       language: parsed.language,
+      published: parsed.published,
       source: 'crawlstr/1',
+      // Extension registry (spec §9.2): a browser crawler only ever sees clearnet.
+      network: 'clearnet',
+      ...(platform ? { platform } : {}),
+      type: platform === 'github' || platform === 'gitlab' ? 'repository' : 'page',
     });
 
     // Add discovered links to queue
