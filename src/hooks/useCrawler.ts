@@ -52,14 +52,15 @@ export function useCrawler() {
     };
   }, []);
 
-  // Wire up relay publishing via the Nostr connection pool
+  // Wire up relay publishing. Each crawl observation is pushed to every relay
+  // in the index publish set via a targeted per-relay connection — the crawler
+  // list is authoritative, not merely decorative.
   useEffect(() => {
     setRelayPublisher(async (relayUrl, event) => {
       try {
-        // Use the nostr pool to publish — it handles relay connections
-        await nostr.event(event, { signal: AbortSignal.timeout(10000) });
+        await nostr.relay(relayUrl).event(event, { signal: AbortSignal.timeout(10000) });
       } catch (error) {
-        console.debug(`[Crawler] Failed to publish to relay:`, error);
+        console.debug(`[Crawler] Publish failed for ${relayUrl}:`, error);
       }
     });
   }, [nostr]);

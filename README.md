@@ -162,12 +162,18 @@ Full schema documentation: [NIP.md](NIP.md) · Canonical spec: [SIP-01 v1.1](htt
 
 Observations are published to:
 
-- `wss://relay.nostr.band/` (NIP-50 search)
+- `wss://relay-na1.metanomalist.com/`
 - `wss://relay.ditto.pub/` (NIP-50 search)
+- `wss://jskitty.cat/nostr`
 - `wss://search.nos.today/` (NIP-50 search)
+- `wss://relay.primal.net/`
+- `wss://nostr.hifish.org/`
+- `wss://relay.nostr.band/` (NIP-50 search)
 - `wss://relay.noswhere.com/` (NIP-50 search)
-- `wss://relay.primal.net/` (write relay)
-- `wss://relay.damus.io/` (write relay)
+- `wss://relay.damus.io/`
+- `ws://acuy3mjnv26tkyaaucndlxmg2ocntz4rtebhavk57vgruozm42iaznqd.onion/` (Tor only — reachable from Tor Browser; clearnet browsers skip it)
+
+Each observation is pushed to every relay in the set via targeted per-relay connections.
 
 ---
 
