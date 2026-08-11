@@ -1,5 +1,6 @@
-// HTML parser — extracts content from crawled pages
+// HTML parser — extracts content and discovery signals from crawled pages
 
+import { detectFeeds, type FeedLink } from './feed';
 import type { ParsedPage } from './types';
 
 export function parsePage(html: string, baseUrl: string): ParsedPage {
@@ -40,6 +41,26 @@ export function parsePage(html: string, baseUrl: string): ParsedPage {
     '';
   const publishedTs = publishedRaw ? Math.floor(new Date(publishedRaw).getTime() / 1000) : NaN;
   const published = Number.isFinite(publishedTs) ? publishedTs : undefined;
+
+  // RSS / Atom feeds linked from the page (discovery signal)
+  const feeds: FeedLink[] = detectFeeds(doc, baseUrl);
+
+  // Canonical URL the page claims for itself (dedup signal)
+  const canonicalRaw = doc.querySelector('link[rel="canonical"]')?.getAttribute('href')?.trim() ?? '';
+  let canonical = '';
+  if (canonicalRaw) {
+    try {
+      canonical = new URL(canonicalRaw, baseUrl).href;
+    } catch {
+      canonical = '';
+    }
+  }
+
+  // Keywords → SIP-01 topic tags (validated against TOPIC_RE at build time)
+  const keywordsRaw = doc.querySelector('meta[name="keywords"]')?.getAttribute('content')?.trim() ?? '';
+  const keywords = keywordsRaw
+    ? keywordsRaw.split(',').map((k) => k.trim()).filter(Boolean).slice(0, 8)
+    : [];
 
   // Remove non-content elements
   const removeSelectors = 'script, style, noscript, iframe, nav, footer, header, aside, [role="navigation"], [role="banner"], [role="contentinfo"], .nav, .navbar, .sidebar, .footer, .header, .menu, .ad, .ads, .advertisement, .social-share, .comments';
@@ -84,6 +105,9 @@ export function parsePage(html: string, baseUrl: string): ParsedPage {
     description,
     image,
     published,
+    feeds,
+    canonical,
+    keywords,
     text: text.slice(0, 10000), // Cap text at 10k chars for storage
     language,
     links: [...new Set(links)], // Deduplicate

@@ -26,7 +26,6 @@ export const INDEX_WRITE_RELAYS = [
   'wss://relay-na1.metanomalist.com/',
   'wss://relay.ditto.pub/',
   'wss://jskitty.cat/nostr',
-  'wss://search.nos.today/',
   'wss://relay.primal.net/',
   'wss://relay.damus.io/',
   'wss://nostr.hifish.org/',

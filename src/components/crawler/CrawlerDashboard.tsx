@@ -18,6 +18,10 @@ import {
   Key,
   Copy,
   Check,
+  Shuffle,
+  Rss,
+  Map,
+  Link2,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,12 +80,19 @@ export function CrawlerDashboard() {
   const {
     isRunning,
     initialized,
+    mode,
+    modes,
+    setModePreference,
+    currentSeed,
     stats,
     recentCrawls,
     indexerInfo,
+    seedCount,
+    scoutedCount,
     start,
     stop,
     seedUrl,
+    scoutRandom,
     clearAll,
     updateSettings,
     getSettings,
@@ -132,19 +143,21 @@ export function CrawlerDashboard() {
               </div>
               <div>
                 <CardTitle className="text-xl">
-                  {isRunning ? 'Crawler Active' : 'Crawler Offline'}
+                  {isRunning ? 'Scout Active' : 'Scout Offline'}
                 </CardTitle>
                 <CardDescription>
                   {isRunning
-                    ? 'Your browser is contributing to the shared SIP-01 index'
-                    : 'Enable to start crawling and indexing the web'}
+                    ? currentSeed
+                      ? `Scouting from ${new URL(currentSeed).hostname}`
+                      : 'Scouting the open web'
+                    : 'Scout the web. Feed the network.'}
                 </CardDescription>
               </div>
             </div>
             <Button
               size="lg"
               variant={isRunning ? 'destructive' : 'default'}
-              onClick={isRunning ? stop : start}
+              onClick={isRunning ? stop : () => start()}
               disabled={!initialized}
               className="gap-2 px-6"
             >
@@ -162,6 +175,50 @@ export function CrawlerDashboard() {
             </Button>
           </div>
         </CardHeader>
+
+        <CardContent className="pt-0 space-y-4">
+          {/* Random Scout — one button, zero setup */}
+          {!isRunning && (
+            <div className="space-y-3">
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => scoutRandom()}
+                disabled={!initialized}
+                className="w-full gap-2 border-primary/40 hover:bg-primary/10 hover:text-primary"
+              >
+                <Shuffle className="h-4 w-4" />
+                Random Scout — pick a site for me
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">
+                {seedCount.toLocaleString()} curated starting points
+                {scoutedCount > 0 && ` · you've scouted ${scoutedCount}`}
+              </p>
+            </div>
+          )}
+
+          {/* Crawl mode picker */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-1">Mode:</span>
+            {(Object.keys(modes) as Array<keyof typeof modes>).map((key) => (
+              <button
+                key={key}
+                onClick={() => !isRunning && setModePreference(key)}
+                disabled={isRunning}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                  mode === key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border hover:border-primary/50',
+                  isRunning && 'opacity-50 cursor-not-allowed',
+                )}
+                title={modes[key].description}
+              >
+                {modes[key].label}
+              </button>
+            ))}
+          </div>
+        </CardContent>
 
         {/* Live status indicator */}
         {isRunning && (
@@ -304,6 +361,31 @@ export function CrawlerDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Discovery strip — the scout's contribution beyond pages */}
+      {(stats.urlsDiscovered > 0 || stats.feedsFound > 0 || stats.sitemapsFound > 0) && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-primary" />
+                <span className="font-bold">{stats.urlsDiscovered.toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs">URLs discovered</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Rss className="h-4 w-4 text-primary" />
+                <span className="font-bold">{stats.feedsFound.toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs">feeds found</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Map className="h-4 w-4 text-primary" />
+                <span className="font-bold">{stats.sitemapsFound.toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs">sitemaps found</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs for Seed / History / Settings */}
       <Tabs defaultValue="seed" className="w-full">
@@ -528,6 +610,40 @@ export function CrawlerDashboard() {
                     id="eco-mode"
                     checked={settings.ecoMode}
                     onCheckedChange={(v) => updateSettings({ ecoMode: v })}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Rss className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="follow-feeds">Follow RSS/Atom feeds</Label>
+                      <p className="text-xs text-muted-foreground">Index feed entries — cheap, high-quality discovery</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="follow-feeds"
+                    checked={settings.followFeeds}
+                    onCheckedChange={(v) => updateSettings({ followFeeds: v })}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Map className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="follow-sitemaps">Read sitemaps</Label>
+                      <p className="text-xs text-muted-foreground">Use sitemap.xml for discovery (sampled, bounded)</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="follow-sitemaps"
+                    checked={settings.followSitemaps}
+                    onCheckedChange={(v) => updateSettings({ followSitemaps: v })}
                   />
                 </div>
               </div>

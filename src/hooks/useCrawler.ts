@@ -1,17 +1,20 @@
 // React hook for the crawler engine
-// Wires up SIP-01 publishing via Nostr relays
+// Wires up SIP-01 publishing via targeted per-relay Nostr connections
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNostr } from '@nostrify/react';
 import { CrawlerEngine } from '@/crawler/engine';
 import { setRelayPublisher, getIndexerInfo } from '@/crawler/publisher';
-import type { CrawlerStats, CrawlerSettings } from '@/crawler/types';
+import { seedCount, scoutedCount } from '@/crawler/seeds';
+import { CRAWL_MODES, type CrawlMode, type CrawlerStats, type CrawlerSettings } from '@/crawler/types';
 
 export function useCrawler() {
   const { nostr } = useNostr();
   const engineRef = useRef<CrawlerEngine | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [mode, setMode] = useState<CrawlMode>('site');
+  const [currentSeed, setCurrentSeed] = useState<string | null>(null);
   const [stats, setStats] = useState<CrawlerStats>({
     pagesIndexed: 0,
     queueSize: 0,
@@ -25,6 +28,9 @@ export function useCrawler() {
     fetchFailed: 0,
     duplicates: 0,
     thinContent: 0,
+    urlsDiscovered: 0,
+    feedsFound: 0,
+    sitemapsFound: 0,
   });
   const [recentCrawls, setRecentCrawls] = useState<Array<{
     url: string;
@@ -45,6 +51,12 @@ export function useCrawler() {
 
     engine.onStats((newStats) => {
       setStats(newStats);
+      // Engine can auto-stop when a session budget is spent.
+      if (!engine.isRunning()) setIsRunning(false);
+    });
+
+    engine.onMode((newMode) => {
+      setMode(newMode);
     });
 
     return () => {
@@ -81,10 +93,11 @@ export function useCrawler() {
     return () => clearInterval(interval);
   }, [initialized, isRunning]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (crawlMode?: CrawlMode) => {
     if (!engineRef.current) return;
-    await engineRef.current.start();
+    await engineRef.current.start(crawlMode);
     setIsRunning(true);
+    if (crawlMode) setMode(crawlMode);
   }, []);
 
   const stop = useCallback(async () => {
@@ -93,9 +106,40 @@ export function useCrawler() {
     setIsRunning(false);
   }, []);
 
+  const setModePreference = useCallback((crawlMode: CrawlMode) => {
+    if (!engineRef.current) return;
+    engineRef.current.setMode(crawlMode);
+    setMode(crawlMode);
+  }, []);
+
   const seedUrl = useCallback(async (url: string) => {
     if (!engineRef.current) return;
     await engineRef.current.seedUrl(url);
+    setCurrentSeed(engineRef.current.getCurrentSeed());
+  }, []);
+
+  /** Random Scout: pick a seed the device hasn't scouted, start crawling. */
+  const scoutRandom = useCallback(async (crawlMode?: CrawlMode): Promise<string | null> => {
+    const engine = engineRef.current;
+    if (!engine) return null;
+    if (crawlMode && crawlMode !== mode) setMode(crawlMode);
+    const seed = await engine.scoutRandom(crawlMode);
+    if (seed) {
+      setIsRunning(true);
+      setCurrentSeed(seed);
+    }
+    return seed;
+  }, [mode]);
+
+  /** Random Explorer: keep scouting fresh random seeds within every limit. */
+  const startExplorer = useCallback(async (): Promise<string | null> => {
+    if (!engineRef.current) return null;
+    const seed = await engineRef.current.startExplorer();
+    if (seed) {
+      setIsRunning(true);
+      setCurrentSeed(seed);
+    }
+    return seed;
   }, []);
 
   const clearAll = useCallback(async () => {
@@ -119,18 +163,28 @@ export function useCrawler() {
       maxConcurrent: 1,
       maxPageSizeKB: 2048,
       ecoMode: true,
+      followFeeds: true,
+      followSitemaps: true,
     };
   }, []);
 
   return {
     isRunning,
     initialized,
+    mode,
+    modes: CRAWL_MODES,
+    setModePreference,
+    currentSeed,
     stats,
     recentCrawls,
     indexerInfo,
+    seedCount: seedCount(),
+    scoutedCount: scoutedCount(),
     start,
     stop,
     seedUrl,
+    scoutRandom,
+    startExplorer,
     clearAll,
     updateSettings,
     getSettings,

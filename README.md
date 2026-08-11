@@ -61,6 +61,7 @@ Most "decentralized search" projects still run centralized crawlers. Crawlstr ma
 | Feature | Description |
 |---------|-------------|
 | **Opt-in only** | Nothing runs without explicitly pressing "Start Crawling" |
+| **🎲 Random Scout** | One button — picks a curated starting point you haven't scouted and goes |
 | **SIP-01 native** | Same protocol as 0xSearchstr, 0xPresearchstr, UNCAGED — one shared index |
 | **Per-device identity** | Anonymous indexer keypair, separate from your Nostr identity |
 | **No query leakage** | Events contain page metadata only — never what anyone searched for |
@@ -70,6 +71,41 @@ Most "decentralized search" projects still run centralized crawlers. Crawlstr ma
 | **Persistent queue** | IndexedDB-backed, survives browser restarts |
 | **Offline capable** | Crawl queue persists; publishes when Nostr is reachable |
 | **PWA** | Installable, works on mobile and desktop |
+
+---
+
+## The Scout / Indexer Split
+
+Crawlstr is deliberately **not** a small copy of [Indexstr](https://github.com/NostrDanish/indxestr). They're two classes of node:
+
+```
+        THE INDEXSTR NETWORK
+                  │
+    ┌─────────────┴─────────────┐
+    │                           │
+🪶 CRAWLSTR                🏭 INDEXSTR
+Lightweight scout          Heavyweight indexer
+"I found something"        "I operate indexing capacity"
+    │                           │
+    └─────────────┬─────────────┘
+                  ▼
+              NOSTR / SIP-01
+                  │
+    ┌─────────────┼─────────────┐
+    ▼             ▼             ▼
+0xSearchstr   UNCAGED      Other engines
+```
+
+| | 🪶 Crawlstr (this) | 🏭 Indexstr |
+|---|---|---|
+| **Role** | Human-directed & random discovery | Systematic distributed crawling |
+| **Seeds** | You paste a URL, or Random Scout picks | Bundled curated SQLite collections |
+| **Queue** | Small, session-scoped | Massive, sharded across 256 slots |
+| **Discovery** | Links, feeds, sitemaps, canonical | Collection URLs at scale |
+| **Device** | Any browser, incl. a phone on WiFi | Desktop/VPS-class contribution |
+| **Coupling** | None. Both speak SIP-01 to Nostr. | None. Both speak SIP-01 to Nostr. |
+
+Crawlstr finds. Indexstr maintains. Nostr distributes. Searchstr searches.
 
 ---
 
@@ -88,6 +124,12 @@ Open the printed URL, add a seed URL, press **Start Crawling**.
 
 ## Usage
 
+### Random Scout
+
+The fastest way to contribute: press **Random Scout** and Crawlstr picks a starting point from a curated collection of long-tail sites — indie blogs, awesome lists, documentation, archives, open data — preferring ones your device hasn't scouted before. No account, no configuration, no URL needed.
+
+Selection history stays in your browser (localStorage) and is **never published** — only the resulting page observations go to Nostr.
+
 ### Seed a URL
 
 Enter any URL in the **Seed URLs** tab:
@@ -98,6 +140,26 @@ https://bitcoin.org
 
 The crawler fetches the page, extracts content, hashes it, signs a SIP-01 observation, and publishes to Nostr. Then it follows links up to depth 3.
 
+### Crawl Modes
+
+| Mode | Budget | Purpose |
+|------|--------|---------|
+| **Quick Scan** | ~5 pages | Fast inspection of one site |
+| **Site Scan** | ~30 pages | A useful, complete crawl |
+| **Deep Scan** | ~150 pages | Deeper crawl of a larger site |
+| **Volunteer** | until stopped | Continuous contribution, every limit still applies |
+
+When a mode's budget is spent, the crawler stops cleanly on its own. **Random Explorer** (continuous random scouting) is opt-in via `startExplorer` — never the default.
+
+### Discovery Sources
+
+Crawlstr is a **scout**, so it prioritizes cheap, high-value discovery over bulk fetching:
+
+- **RSS/Atom feeds** — one small XML file yields current content URLs with titles and dates; entries are indexed directly and queued for full fetches
+- **Sitemaps** — `Sitemap:` declarations in robots.txt, plus `/sitemap.xml`; sampled and bounded, never a firehose
+- **Canonical URLs** — observations are filed under the page's claimed canonical identity
+- **Link graph** — same-domain links followed with per-domain rate limits; login/cart/calendar traps filtered out
+
 ### Crawler Settings
 
 | Setting | Default | Description |
@@ -106,6 +168,8 @@ The crawler fetches the page, extracts content, hashes it, signs a SIP-01 observ
 | **Charging Only** | Off | Only crawl while device is charging |
 | **Respect robots.txt** | On | Follow website crawling policies |
 | **Eco Mode** | On | Slower crawling, less resource usage |
+| **Follow RSS/Atom feeds** | On | Index feed entries (cheap discovery) |
+| **Read sitemaps** | On | Use sitemap.xml for discovery (sampled) |
 
 ### Indexer Identity
 
@@ -236,9 +300,12 @@ src/
 │   ├── indexerIdentity.ts  ← Per-device anonymous indexer keypair
 │   ├── publisher.ts        ← Signs + publishes kind 39697 via finalizeEvent
 │   ├── relays.ts           ← Ecosystem relay pool configuration
-│   ├── robots.ts           ← robots.txt parser with caching
+│   ├── robots.ts           ← robots.txt parser (policies + Sitemap: discovery)
+│   ├── feed.ts             ← RSS/Atom detection + parsing (cheap discovery)
+│   ├── sitemap.ts          ← XML sitemap parsing (urlset + sitemapindex, sampled)
+│   ├── seeds.ts            ← Random Scout seed collection + local pick history
 │   ├── limits.ts           ← Per-domain rate limiting
-│   └── types.ts            ← TypeScript interfaces
+│   └── types.ts            ← TypeScript interfaces (incl. crawl modes)
 ├── components/
 │   └── crawler/
 │       └── CrawlerDashboard.tsx  ← Main UI (toggle, stats, seed, history, settings)
@@ -255,7 +322,8 @@ src/
 
 | Project | Role | URL |
 |---------|------|-----|
-| **Crawlstr** (this) | Browser crawler → SIP-01 publisher | [crawlstr.shakespeare.wtf](https://crawlstr.shakespeare.wtf) |
+| **Crawlstr** (this) | Lightweight scout → SIP-01 publisher | [crawlstr.shakespeare.wtf](https://crawlstr.shakespeare.wtf) |
+| [Indexstr](https://github.com/NostrDanish/indxestr) | Heavyweight distributed indexer w/ collections | — |
 | [0xSearchstr](https://github.com/NostrDanish/0xSearchstr) | Search engine → SIP-01 reader | [0xsearchstr.shakespeare.wtf](https://0xsearchstr.shakespeare.wtf) |
 | [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr) | Community fork with keyword staking | [presearchstr.shakespeare.wtf](https://presearchstr.shakespeare.wtf) |
 | [UNCAGED-ENGINE](https://github.com/NostrDanish/UNCAGED-ENGINE) | Minimal search engine template | [uncaged.shakespeare.wtf](https://uncaged.shakespeare.wtf) |

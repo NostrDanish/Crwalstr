@@ -1,5 +1,7 @@
 // Crawler type definitions
 
+import type { FeedLink } from './feed';
+
 export interface CrawlJob {
   url: string;
   priority: number;
@@ -17,6 +19,12 @@ export interface ParsedPage {
   image?: string;
   /** Claimed publication time, unix seconds (SIP-01 `published` tag). */
   published?: number;
+  /** RSS/Atom feeds linked from the page. */
+  feeds: FeedLink[];
+  /** Canonical URL the page claims for itself. */
+  canonical: string;
+  /** meta keywords, split and trimmed (max 8). */
+  keywords: string[];
   text: string;
   language: string;
   links: string[];
@@ -55,7 +63,23 @@ export interface CrawlerStats {
   duplicates: number;
   /** Skipped for having almost no extractable text (JS-rendered SPAs). */
   thinContent: number;
+  /** New URLs discovered this session (links + feed entries + sitemap URLs). */
+  urlsDiscovered: number;
+  /** RSS/Atom feeds found this session. */
+  feedsFound: number;
+  /** Sitemaps found this session. */
+  sitemapsFound: number;
 }
+
+/** Crawl budget presets — how much one session may do before auto-stopping. */
+export type CrawlMode = 'quick' | 'site' | 'deep' | 'volunteer';
+
+export const CRAWL_MODES: Record<CrawlMode, { label: string; maxPages: number; description: string }> = {
+  quick:     { label: 'Quick Scan', maxPages: 5,   description: '1–5 pages, fast inspection' },
+  site:      { label: 'Site Scan',  maxPages: 30,  description: '~30 pages, useful crawl' },
+  deep:      { label: 'Deep Scan',  maxPages: 150, description: 'up to ~150 pages' },
+  volunteer: { label: 'Volunteer',  maxPages: 0,   description: 'crawl until you stop it' },
+};
 
 export interface CrawlerSettings {
   wifiOnly: boolean;
@@ -67,6 +91,10 @@ export interface CrawlerSettings {
   maxConcurrent: number;
   maxPageSizeKB: number;
   ecoMode: boolean;
+  /** Follow RSS/Atom feeds found on pages. */
+  followFeeds: boolean;
+  /** Read sitemap.xml for discovery. */
+  followSitemaps: boolean;
 }
 
 export const DEFAULT_SETTINGS: CrawlerSettings = {
@@ -79,4 +107,6 @@ export const DEFAULT_SETTINGS: CrawlerSettings = {
   maxConcurrent: 1,
   maxPageSizeKB: 2048,
   ecoMode: true,
+  followFeeds: true,
+  followSitemaps: true,
 };

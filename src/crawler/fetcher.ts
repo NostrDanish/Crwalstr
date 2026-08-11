@@ -94,6 +94,45 @@ async function attempt(
   }
 }
 
+/**
+ * Fetch an XML-ish document (RSS/Atom feed, sitemap) — same direct-then-proxy
+ * strategy as fetchPage, but accepts XML content types instead of HTML.
+ * Returns raw text, or null.
+ */
+export async function fetchXml(url: string, maxSizeKB = 1024): Promise<string | null> {
+  const tryOnce = async (requestUrl: string): Promise<string | null> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(requestUrl, {
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: { Accept: 'application/rss+xml,application/atom+xml,application/xml,text/xml,text/html,*/*;q=0.8' },
+      });
+      if (!response.ok) return null;
+      const text = await response.text();
+      if (text.length > maxSizeKB * 1024) return null;
+      return text;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  try {
+    return await tryOnce(url);
+  } catch {
+    // CORS — fall through to the proxy.
+  }
+
+  try {
+    return await tryOnce(proxyUrl(url));
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchPage(
   url: string,
   optionsOrMaxSizeKB: FetchOptions | number = {},

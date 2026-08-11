@@ -11,7 +11,7 @@ export const APP_RELAYS: RelayMetadata = {
     { url: 'wss://relay.ditto.pub/', read: true, write: true },
     { url: 'wss://relay.dreamith.to/', read: true, write: true },
     { url: 'wss://jskitty.cat/nostr', read: true, write: true },
-    { url: 'wss://search.nos.today/', read: true, write: false },
+    { url: 'wss://search.nos.today/', read: true, write: false }, // read-only relay ("blocked: writes disabled")
     { url: 'wss://relay.primal.net/', read: false, write: true },
     { url: 'wss://nos.lol/', read: false, write: true },
     { url: 'wss://nostr.hifish.org/', read: true, write: true },

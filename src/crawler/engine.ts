@@ -1,13 +1,20 @@
-// Main crawler engine — orchestrates the crawl loop
-// Publishes SIP-01 (kind 39697) web index observations via the shared protocol
+// Main crawler engine — orchestrates the crawl loop.
+//
+// Crawlstr is a SCOUT, not a heavy indexer: human-directed and random
+// discovery, micro-crawls with explicit budgets, feed/sitemap reading for
+// cheap discovery, and SIP-01 publishing. Indexstr owns systematic
+// large-scale crawling; this engine stays lightweight on purpose.
 
-import { fetchPage } from './fetcher';
+import { fetchPage, fetchXml } from './fetcher';
 import { parsePage } from './parser';
+import { parseFeed, looksLikeFeed, looksLikeSitemap } from './feed';
+import { parseSitemap, sampleUrls } from './sitemap';
 import { normalizeIndexUrl } from './webIndex';
 import { hashContent } from './hasher';
-import { shouldCrawlUrl, getCrawlDelay } from './robots';
+import { shouldCrawlUrl, getCrawlDelay, getSitemaps } from './robots';
 import { canMakeRequest } from './limits';
 import { publishIndexObservation } from './publisher';
+import { pickRandomSeed } from './seeds';
 import {
   initDB,
   addToQueue,
@@ -21,7 +28,14 @@ import {
   getRecentCrawled,
   clearQueue,
 } from './queue';
-import { DEFAULT_SETTINGS, type CrawlerStats, type CrawlerSettings, type CrawlJob } from './types';
+import {
+  CRAWL_MODES,
+  DEFAULT_SETTINGS,
+  type CrawlMode,
+  type CrawlerStats,
+  type CrawlerSettings,
+  type CrawlJob,
+} from './types';
 
 /**
  * Map well-known hosts to SIP-01 §9.2 `platform` extension values.
@@ -58,9 +72,26 @@ export class CrawlerEngine {
     fetchFailed: 0,
     duplicates: 0,
     thinContent: 0,
+    urlsDiscovered: 0,
+    feedsFound: 0,
+    sitemapsFound: 0,
   };
   private abortController: AbortController | null = null;
   private onStatsChange?: (stats: CrawlerStats) => void;
+  private onModeChange?: (mode: CrawlMode) => void;
+
+  /** Active crawl mode — drives the session page budget. */
+  private mode: CrawlMode = 'site';
+  /** Pages crawled in the current session (reset on start). */
+  private sessionPages = 0;
+  /** Random Explorer: when the session budget is spent, pick a fresh seed. */
+  private explorer = false;
+  /** The seed the current random scout started from (for display). */
+  private currentSeed: string | null = null;
+  /** Sitemaps already probed this run, so we don't refetch per page. */
+  private probedSitemaps = new Set<string>();
+  /** Feeds already followed this run. */
+  private followedFeeds = new Set<string>();
 
   constructor(settings?: Partial<CrawlerSettings>) {
     const stored = localStorage.getItem('crawler-settings');
@@ -81,15 +112,24 @@ export class CrawlerEngine {
     this.onStatsChange = callback;
   }
 
+  onMode(callback: (mode: CrawlMode) => void): void {
+    this.onModeChange = callback;
+  }
+
   private emitStats(): void {
     this.stats.uptime = this.running ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
     this.onStatsChange?.({ ...this.stats });
   }
 
-  async start(): Promise<void> {
+  async start(mode?: CrawlMode): Promise<void> {
     if (this.running) return;
+    if (mode) {
+      this.mode = mode;
+      this.onModeChange?.(mode);
+    }
     this.running = true;
     this.startTime = Date.now();
+    this.sessionPages = 0;
     this.abortController = new AbortController();
     this.emitStats();
     this.crawlLoop();
@@ -97,12 +137,31 @@ export class CrawlerEngine {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.explorer = false;
     this.abortController?.abort();
     this.emitStats();
   }
 
   isRunning(): boolean {
     return this.running;
+  }
+
+  getMode(): CrawlMode {
+    return this.mode;
+  }
+
+  /** Set the crawl mode without starting (takes effect on next start). */
+  setMode(mode: CrawlMode): void {
+    this.mode = mode;
+    this.onModeChange?.(mode);
+  }
+
+  isExplorer(): boolean {
+    return this.explorer;
+  }
+
+  getCurrentSeed(): string | null {
+    return this.currentSeed;
   }
 
   getStats(): CrawlerStats {
@@ -121,6 +180,7 @@ export class CrawlerEngine {
   async seedUrl(url: string, priority = 1.0): Promise<void> {
     const normalizedUrl = normalizeIndexUrl(url);
     if (!normalizedUrl) return;
+    this.currentSeed = normalizedUrl;
     await addToQueue({
       url: normalizedUrl,
       priority,
@@ -129,6 +189,33 @@ export class CrawlerEngine {
     });
     this.stats.queueSize = await getQueueSize();
     this.emitStats();
+  }
+
+  /**
+   * Random Scout: pick a seed from the curated collection (preferring ones
+   * this device has never scouted) and start a crawl in the current mode.
+   * Returns the chosen seed URL.
+   */
+  async scoutRandom(mode?: CrawlMode): Promise<string | null> {
+    const seed = pickRandomSeed();
+    if (!seed) return null;
+    await this.seedUrl(seed);
+    await this.start(mode);
+    return seed;
+  }
+
+  /**
+   * Random Explorer: continuous scouting. When the session budget is spent,
+   * a fresh random seed is picked automatically. Stays subject to every
+   * resource limit — this is opt-in volunteer mode, never the default.
+   */
+  async startExplorer(): Promise<string | null> {
+    this.explorer = true;
+    const seed = pickRandomSeed();
+    if (!seed) return null;
+    await this.seedUrl(seed);
+    await this.start();
+    return seed;
   }
 
   async clearAll(): Promise<void> {
@@ -151,6 +238,18 @@ export class CrawlerEngine {
 
         const job = await getNextJob();
         if (!job) {
+          // Queue empty. Explorer picks a fresh random seed; otherwise stop
+          // when the session budget was the goal and there's nothing left.
+          if (this.explorer) {
+            const seed = pickRandomSeed();
+            if (seed) {
+              this.sessionPages = 0;
+              this.probedSitemaps.clear();
+              this.followedFeeds.clear();
+              await this.seedUrl(seed);
+              continue;
+            }
+          }
           await this.sleep(5000);
           continue;
         }
@@ -164,6 +263,26 @@ export class CrawlerEngine {
 
         await this.crawlUrl(job);
         this.emitStats();
+
+        // Session budget — the crawl modes.
+        const maxPages = CRAWL_MODES[this.mode].maxPages;
+        if (maxPages > 0 && this.sessionPages >= maxPages) {
+          if (this.explorer) {
+            const seed = pickRandomSeed();
+            if (seed) {
+              this.sessionPages = 0;
+              this.probedSitemaps.clear();
+              this.followedFeeds.clear();
+              await this.seedUrl(seed);
+            } else {
+              await this.stop();
+              return;
+            }
+          } else {
+            await this.stop();
+            return;
+          }
+        }
 
         const crawlDelay = this.settings.respectRobots ? await getCrawlDelay(job.url) : 0;
         await this.sleep(Math.max(crawlDelay, this.settings.ecoMode ? 8000 : 3000));
@@ -241,6 +360,7 @@ export class CrawlerEngine {
 
     // Update stats
     this.stats.pagesIndexed++;
+    this.sessionPages++;
     this.stats.bandwidthUsed += result.size;
     if (result.viaProxy) this.stats.viaProxy++;
     else this.stats.viaDirect++;
@@ -248,15 +368,23 @@ export class CrawlerEngine {
 
     // Publish SIP-01 v1.1 observation to the shared index (kind 39697).
     // Canonical spec: https://github.com/NostrDanish/SIP-01
-    const host = new URL(job.url).hostname;
+    //
+    // If the page claims a canonical URL, the observation is filed under
+    // THAT identity (§7 normalization keeps it byte-compatible with every
+    // other indexer).
+    const indexUrl = parsed.canonical
+      ? (normalizeIndexUrl(parsed.canonical) ?? job.url)
+      : job.url;
+    const host = new URL(indexUrl).hostname;
     const platform = detectPlatform(host);
     await publishIndexObservation({
-      url: job.url,
+      url: indexUrl,
       title: parsed.title,
       description: parsed.description,
       image: parsed.image,
       language: parsed.language,
       published: parsed.published,
+      tags: parsed.keywords,
       source: 'crawlstr/1',
       // Extension registry (spec §9.2): a browser crawler only ever sees clearnet.
       network: 'clearnet',
@@ -264,15 +392,37 @@ export class CrawlerEngine {
       type: platform === 'github' || platform === 'gitlab' ? 'repository' : 'page',
     });
 
-    // Add discovered links to queue
+    // --- Discovery: feeds -------------------------------------------------
+    if (this.settings.followFeeds && parsed.feeds.length > 0) {
+      for (const feed of parsed.feeds.slice(0, 2)) {
+        if (this.followedFeeds.has(feed.url)) continue;
+        this.followedFeeds.add(feed.url);
+        await this.followFeed(feed.url, job);
+      }
+    }
+
+    // --- Discovery: sitemap ----------------------------------------------
+    if (this.settings.followSitemaps) {
+      const origin = new URL(job.url).origin;
+      if (!this.probedSitemaps.has(origin)) {
+        this.probedSitemaps.add(origin);
+        await this.probeSitemaps(origin, job);
+      }
+    }
+
+    // --- Discovery: links -------------------------------------------------
     if (job.depth < this.settings.maxDepth) {
       const maxLinks = this.settings.ecoMode ? 5 : 10;
+      let added = 0;
       for (const link of parsed.links.slice(0, maxLinks)) {
         const normalized = normalizeIndexUrl(link);
         if (!normalized) continue;
 
         // Don't re-crawl same URL
         if (normalized === job.url) continue;
+
+        // Skip obvious non-content: login/auth/cart/wallet traps.
+        if (this.looksLikeTrap(normalized)) continue;
 
         await addToQueue({
           url: normalized,
@@ -281,8 +431,161 @@ export class CrawlerEngine {
           discoveredFrom: job.url,
           attempts: 0,
         });
+        added++;
       }
-      this.stats.queueSize = await getQueueSize();
+      if (added > 0) {
+        this.stats.urlsDiscovered += added;
+        this.stats.queueSize = await getQueueSize();
+      }
+    }
+  }
+
+  /**
+   * Fetch a discovered feed and index its entries as observations.
+   * A feed is the cheapest source of canonical content URLs on the web —
+   * one small XML file yields a list of current pages with titles and dates.
+   */
+  private async followFeed(feedUrl: string, fromJob: CrawlJob): Promise<void> {
+    const xml = await fetchXml(feedUrl);
+    if (!xml || !looksLikeFeed(xml)) return;
+
+    const feed = parseFeed(xml, feedUrl, this.settings.ecoMode ? 5 : 10);
+    if (!feed || feed.entries.length === 0) return;
+
+    this.stats.feedsFound++;
+    let discovered = 0;
+
+    for (const entry of feed.entries) {
+      const normalized = normalizeIndexUrl(entry.url);
+      if (!normalized) continue;
+
+      // Skip entries we've already observed.
+      const existing = await getCrawled(normalized);
+      if (existing) continue;
+
+      // Index the entry directly — the feed itself is the site's own summary.
+      if (entry.title && entry.title !== normalized) {
+        await markCrawled(normalized, await hashContent(entry.title), entry.title);
+        const host = new URL(normalized).hostname;
+        const platform = detectPlatform(host);
+        await publishIndexObservation({
+          url: normalized,
+          title: entry.title,
+          description: entry.summary,
+          language: undefined,
+          published: entry.published,
+          source: 'crawlstr/1',
+          network: 'clearnet',
+          ...(platform ? { platform } : {}),
+          type: 'article',
+        });
+        this.stats.pagesIndexed++;
+      }
+
+      // And queue it for a real page fetch at lower priority.
+      await addToQueue({
+        url: normalized,
+        priority: fromJob.priority * 0.6,
+        depth: fromJob.depth + 1,
+        discoveredFrom: feedUrl,
+        attempts: 0,
+      });
+      discovered++;
+    }
+
+    this.stats.urlsDiscovered += discovered;
+    this.stats.queueSize = await getQueueSize();
+    console.debug(`[Crawler] Feed discovered: ${feedUrl} (${feed.entries.length} entries)`);
+  }
+
+  /**
+   * Probe a domain for sitemaps: robots.txt Sitemap: declarations first,
+   * then the conventional /sitemap.xml. Sampled and bounded — we read the
+   * map, we don't drink from it.
+   */
+  private async probeSitemaps(origin: string, fromJob: CrawlJob): Promise<void> {
+    const candidates = await getSitemaps(origin + '/');
+    const fallback = `${origin}/sitemap.xml`;
+    if (candidates.length === 0) candidates.push(fallback);
+
+    for (const sitemapUrl of candidates.slice(0, 2)) {
+      const xml = await fetchXml(sitemapUrl);
+      if (!xml || !looksLikeSitemap(xml)) continue;
+
+      const sitemap = parseSitemap(xml, sitemapUrl);
+      if (!sitemap) continue;
+
+      this.stats.sitemapsFound++;
+      console.debug(`[Crawler] Sitemap discovered: ${sitemapUrl} (${sitemap.urls.length} URLs, ${sitemap.sitemaps.length} children)`);
+
+      // Sample page URLs — a sitemap can hold tens of thousands.
+      const sample = sampleUrls(sitemap.urls, this.settings.ecoMode ? 10 : 25);
+      let added = 0;
+      for (const url of sample) {
+        const normalized = normalizeIndexUrl(url);
+        if (!normalized) continue;
+        const existing = await getCrawled(normalized);
+        if (existing) continue;
+        if (this.looksLikeTrap(normalized)) continue;
+
+        await addToQueue({
+          url: normalized,
+          priority: fromJob.priority * 0.5,
+          depth: fromJob.depth + 1,
+          discoveredFrom: sitemapUrl,
+          attempts: 0,
+        });
+        added++;
+      }
+
+      // Sitemap index: follow ONE child sitemap for a taste of what's inside.
+      if (sitemap.sitemaps.length > 0 && sitemap.urls.length === 0) {
+        const child = sitemap.sitemaps[Math.floor(Math.random() * sitemap.sitemaps.length)];
+        const childXml = await fetchXml(child);
+        if (childXml && looksLikeSitemap(childXml)) {
+          const childSitemap = parseSitemap(childXml, child);
+          if (childSitemap) {
+            const childSample = sampleUrls(childSitemap.urls, this.settings.ecoMode ? 10 : 25);
+            for (const url of childSample) {
+              const normalized = normalizeIndexUrl(url);
+              if (!normalized || this.looksLikeTrap(normalized)) continue;
+              const existing = await getCrawled(normalized);
+              if (existing) continue;
+              await addToQueue({
+                url: normalized,
+                priority: fromJob.priority * 0.5,
+                depth: fromJob.depth + 1,
+                discoveredFrom: child,
+                attempts: 0,
+              });
+              added++;
+            }
+          }
+        }
+      }
+
+      if (added > 0) {
+        this.stats.urlsDiscovered += added;
+        this.stats.queueSize = await getQueueSize();
+      }
+    }
+  }
+
+  /**
+   * Cheap trap detection — URLs that are never content and would waste the
+   * crawl budget or worse (login flows, carts, calendars, trackers).
+   */
+  private looksLikeTrap(url: string): boolean {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.toLowerCase();
+      if (/\/(login|logout|signin|signout|signup|register|auth|account|cart|checkout|basket|wallet|password|reset)\b/.test(path)) return true;
+      if (path.includes('/wp-admin') || path.includes('/wp-login')) return true;
+      if (/\d{4}\/\d{2}\/\d{2}/.test(path) && u.searchParams.has('page')) return true; // calendar paging
+      if (path.endsWith('.zip') || path.endsWith('.exe') || path.endsWith('.dmg') || path.endsWith('.tar.gz')) return true;
+      return false;
+    } catch {
+      return true;
     }
   }
 

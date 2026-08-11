@@ -12,6 +12,7 @@ const CACHE_TTL = 3600000; // 1 hour
 interface RobotsRules {
   disallowed: string[];
   crawlDelay?: number;
+  sitemaps: string[];
 }
 
 export async function shouldCrawlUrl(url: string): Promise<boolean> {
@@ -97,6 +98,7 @@ async function getRobotsRules(robotsUrl: string): Promise<RobotsRules | null> {
 function parseRobotsTxt(text: string): RobotsRules {
   const lines = text.split('\n');
   const disallowed: string[] = [];
+  const sitemaps: string[] = [];
   let crawlDelay: number | undefined;
   let relevantAgent = false;
 
@@ -109,6 +111,12 @@ function parseRobotsTxt(text: string): RobotsRules {
 
     const directive = trimmed.slice(0, colonIndex).trim().toLowerCase();
     const value = trimmed.slice(colonIndex + 1).trim();
+
+    // Sitemap is a global directive — it applies regardless of user-agent.
+    if (directive === 'sitemap' && value) {
+      sitemaps.push(value);
+      continue;
+    }
 
     if (directive === 'user-agent') {
       const agent = value.toLowerCase();
@@ -126,5 +134,20 @@ function parseRobotsTxt(text: string): RobotsRules {
     }
   }
 
-  return { disallowed, crawlDelay };
+  return { disallowed, crawlDelay, sitemaps };
+}
+
+/**
+ * Sitemap URLs declared in a site's robots.txt. Uses the same cache as the
+ * crawl-policy checks, so this costs no extra request after a crawl.
+ */
+export async function getSitemaps(url: string): Promise<string[]> {
+  try {
+    const urlObj = new URL(url);
+    const robotsUrl = `${urlObj.protocol}//${urlObj.host}/robots.txt`;
+    const rules = await getRobotsRules(robotsUrl);
+    return rules?.sitemaps ?? [];
+  } catch {
+    return [];
+  }
 }

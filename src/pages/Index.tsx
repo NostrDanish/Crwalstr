@@ -47,12 +47,12 @@ const Index = () => {
             Powered by Nostr
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
-            Search without the cage.
+            Scout the web. Feed the network.
           </h1>
           <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            Turn your browser into a voluntary web crawler. Every page you crawl
-            feeds the shared SIP-01 index — readable by 0xSearchstr, 0xPresearchstr,
-            UNCAGED, and any compatible client.
+            Turn your browser into a lightweight web scout. Discover pages, feeds,
+            and sitemaps — every observation feeds the shared SIP-01 index,
+            readable by 0xSearchstr, 0xPresearchstr, UNCAGED, and any compatible client.
           </p>
         </div>
       </section>
@@ -110,14 +110,14 @@ const Index = () => {
               {
                 step: '1',
                 icon: Search,
-                title: 'Seed URLs',
-                desc: 'Add websites you want to index, or pick up crawl jobs from the network',
+                title: 'Seed or Scout',
+                desc: 'Add a URL — or hit Random Scout and let us pick an interesting corner of the web',
               },
               {
                 step: '2',
                 icon: Radar,
-                title: 'Crawl',
-                desc: 'Your browser fetches pages, extracts content, and discovers new links',
+                title: 'Scout',
+                desc: 'Fetch pages, read RSS feeds and sitemaps, discover what the site is made of',
               },
               {
                 step: '3',
