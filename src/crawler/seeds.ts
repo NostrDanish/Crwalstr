@@ -1,397 +1,271 @@
 /**
- * Random Scout seed collection.
+ * Random Scout seed selection engine.
  *
- * A small curated list of long-tail starting points — indie blogs, awesome
- * lists, documentation, archives, tools, feeds. This is intentionally a few
- * hundred URLs, not a database: Indexstr ships the heavy SQLite collections,
- * Crawlstr ships entropy.
+ * The corpus lives in src/data/seeds/*.txt — one category per file — so
+ * improving the dataset never means touching crawler logic. This module is
+ * only the selection algorithm.
  *
- * Selection strategy is "fresh-first": the provider remembers (locally, never
- * published) which seeds this device has already scouted, and prefers URLs it
- * has never picked. When everything has been used, the oldest picks recycle.
+ * Selection is a weighted mix of strategies (the point is long-tail
+ * coverage, not uniform randomness over a fixed list):
  *
- * Privacy: the selection history lives in localStorage only. Which seed was
- * picked is NEVER published — only the public page observations that result.
+ *   40%  fresh      — never picked by this device
+ *   25%  rare       — picked least often by this device
+ *   15%  category   — from the category this device has explored least
+ *   10%  stale      — not picked for the longest time
+ *   10%  random     — pure randomness
+ *
+ * Privacy: selection history lives in localStorage only. Which seed was
+ * picked is NEVER published — only the public page observations that
+ * result from crawling it.
  */
 
 import { normalizeIndexUrl } from './webIndex';
 
-/** Curated long-tail starting points. One per line; comments stripped. */
-const SEED_TEXT = `
-# --- Nostr / Bitcoin / open protocol ecosystem ---
-https://nostr.com
-https://nostr.how
-https://bitcoin.org
-https://bitcoiner.guide
-https://darosior.github.io
-https://diyhpl.us
-https://gnusha.org
-https://mempool.space
-https://bitcoinops.org
-https://learnmeabitcoin.com
-https://lightning.engineering
-https://btctranscripts.com
-https://bitcoin.page
-https://bitcoinbriefly.com
-https://nakamoto.com
-https://unchained.com
-https://keys.casa
-https://blog.casa
-https://ministryofnodes.com
-https://bitcoinerjobs.co
-https://nostr.directory
-https://nostr.watch
-https://nostrapps.com
-https://njump.me
-https://iris.to
-https://primal.net
-https://habla.news
-https://zap.stream
-https://wikifreedia.xyz
-https://shopstr.store
-https://satellite.earth
-https://hivemind.vc
-https://spiral.xyz
-https://opensats.org
-https://hrf.org
-https://bitcoinbeach.com
-https://geyser.fund
-https://bolt.fun
-https://amboss.space
+import nostrTxt from '@/data/seeds/nostr.txt?raw';
+import bitcoinTxt from '@/data/seeds/bitcoin.txt?raw';
+import devTxt from '@/data/seeds/dev.txt?raw';
+import scienceTxt from '@/data/seeds/science.txt?raw';
+import booksTxt from '@/data/seeds/books.txt?raw';
+import musicTxt from '@/data/seeds/music.txt?raw';
+import gamesTxt from '@/data/seeds/games.txt?raw';
+import opendataTxt from '@/data/seeds/opendata.txt?raw';
+import indieTxt from '@/data/seeds/indie.txt?raw';
 
-# --- Indie blogs & essays ---
-https://paulgraham.com
-https://slatestarcodex.com
-https://astralcodexten.substack.com
-https://waitbutwhy.com
-https://fs.blog
-https://ribbonfarm.com
-https://kk.org/thetechnium
-https://collaborativefund.com/blog
-https://jamesclear.com
-https://markmanson.net
-https://calnewport.com
-https://nesslabs.com
-https://patrickcollison.com
-https://a16z.com
-https://stratechery.com
-https://daringfireball.net
-https://kottke.org
-https://boingboing.net
-https://longform.org
-https://themarginalian.org
-https://lithub.com
-https://aeon.co
-https://psyche.co
-https://nautil.us
-https://quantamagazine.org
-https://jacobin.com
-https://currentaffairs.org
-https://bostonreview.net
-https://lareviewofbooks.org
-https://3quarksdaily.com
-https://gwern.net
-https://sive.rs
-https://blog.jimmywales.com
-https://tedium.co
-https://readmargins.com
-https://lwn.net
-https://jvns.ca
-https://danluu.com
-https://rachelbythebay.com
-https://matklad.github.io
-https://fasterthanli.me
-https://xeiaso.net
-https://christine.website
-https://www.joelonsoftware.com
-https://blog.codinghorror.com
-https://martinfowler.com
-https://simonwillison.net
-https://antirez.com
-https://pointersgonewild.com
-https://mcfunley.com
-https://blog.samwhomsey.com
+export interface SeedCategory {
+  id: string;
+  label: string;
+  urls: string[];
+}
 
-# --- Awesome lists & dev resources ---
-https://github.com/sindresorhus/awesome
-https://github.com/EbookFoundation/free-programming-books
-https://github.com/public-apis/public-apis
-https://github.com/avelino/awesome-go
-https://github.com/vinta/awesome-python
-https://github.com/rust-unofficial/awesome-rust
-https://github.com/sorrycc/awesome-javascript
-https://github.com/awesome-selfhosted/awesome-selfhosted
-https://github.com/dylanrees/citizen-science
-https://github.com/caesar0301/awesome-public-datasets
-https://developer.mozilla.org
-https://devdocs.io
-https://dev.to
-https://lobste.rs
-https://news.ycombinator.com
-https://stackoverflow.com
-https://stackexchange.com
-https://gitlab.com
-https://sourceforge.net
-https://codeberg.org
-https://sr.ht
-https://tildeverse.org
-https://neocities.org
-https://glitch.com
-https://replit.com
-https://freecodecamp.org
-https://leetcode.com
-https://exercism.org
-https://codewars.com
-https://projecteuler.net
-https://rosettacode.org
+const CATEGORIES: Array<{ id: string; label: string; raw: string }> = [
+  { id: 'nostr', label: 'Nostr', raw: nostrTxt },
+  { id: 'bitcoin', label: 'Bitcoin & Open Money', raw: bitcoinTxt },
+  { id: 'dev', label: 'Dev & Awesome Lists', raw: devTxt },
+  { id: 'science', label: 'Science & Education', raw: scienceTxt },
+  { id: 'books', label: 'Books & Archives', raw: booksTxt },
+  { id: 'music', label: 'Music & Culture', raw: musicTxt },
+  { id: 'games', label: 'Games', raw: gamesTxt },
+  { id: 'opendata', label: 'Open Data & Infrastructure', raw: opendataTxt },
+  { id: 'indie', label: 'Indie Web & Blogs', raw: indieTxt },
+];
 
-# --- Science & education ---
-https://arxiv.org
-https://pubmed.ncbi.nlm.nih.gov
-https://nature.com
-https://science.org
-https://sciencedaily.com
-https://phys.org
-https://livescience.com
-https://scientificamerican.com
-https://newscientist.com
-https://smithsonianmag.com
-https://nationalgeographic.com
-https://nasa.gov
-https://esa.int
-https://spacex.com
-https://space.com
-https://skyandtelescope.org
-https://earthobservatory.nasa.gov
-https://usgs.gov
-https://noaa.gov
-https://ted.com
-https://khanacademy.org
-https://coursera.org
-https://edx.org
-https://ocw.mit.edu
-https://openstax.org
-https://ck12.org
-https://brilliant.org
-https://wolframalpha.com
-https://mathworld.wolfram.com
-https://planetmath.org
-https://mathoverflow.net
-https://plato.stanford.edu
-https://iep.utm.edu
-https://britannica.com
-https://en.wikipedia.org
+/* ------------------------------------------------------------------ */
+/* Corpus                                                              */
+/* ------------------------------------------------------------------ */
 
-# --- Archives, libraries & books ---
-https://archive.org
-https://openlibrary.org
-https://gutenberg.org
-https://standardebooks.org
-https://hathitrust.org
-https://loc.gov
-https://dp.la
-https://worldcat.org
-https://goodreads.com
-https://librarything.com
-https://bookfinder.com
-https://isbnsearch.org
-https://manybooks.net
-https://feedbooks.com
-https://smashwords.com
-https://librivox.org
-https://poetryfoundation.org
-https://poets.org
-https://tvtropes.org
-https://fandom.com
-https://wikiwand.com
+interface SeedRecord {
+  url: string;
+  categoryId: string;
+}
 
-# --- Music, art & culture ---
-https://bandcamp.com
-https://soundcloud.com
-https://musicbrainz.org
-https://discogs.com
-https://rateyourmusic.com
-https://last.fm
-https://setlist.fm
-https://genius.com
-https://whosampled.com
-https://everynoise.com
-https://radiooooo.com
-https://musopen.org
-https://imslp.org
-https://freemusicarchive.org
-https://mixcloud.com
-https://deviantart.com
-https://artstation.com
-https://behance.net
-https://dribbble.com
-https://flickr.com
-https://unsplash.com
-https://pexels.com
-https://wikimedia.org
-https://commons.wikimedia.org
-https://openverse.org
-https://publicdomainreview.org
+let cachedCorpus: SeedRecord[] | null = null;
 
-# --- Games ---
-https://itch.io
-https://mobygames.com
-https://igdb.com
-https://howlongtobeat.com
-https://pcgamingwiki.com
-https://speedrun.com
-https://gog.com
-https://chess.com
-https://lichess.org
-https://boardgamegeek.com
-https://steamdb.info
-https://protondb.com
-https://osgameclones.com
-https://dosgames.com
-https://myabandonware.com
-https://retrogames.cc
-https://archive.org/details/softwarelibrary_msdos_games
+function getCorpus(): SeedRecord[] {
+  if (cachedCorpus) return cachedCorpus;
 
-# --- Tools, projects & open data ---
-https://data.gov
-https://ourworldindata.org
-https://gapminder.org
-https://datahub.io
-https://kaggle.com
-https://huggingface.co
-https://openstreetmap.org
-https://overpass-turbo.eu
-https://geohack.toolforge.org
-https://wunderground.com
-https://windy.com
-https://flightaware.com
-https://marinetraffic.com
-https://flightradar24.com
-https://airvisual.com
-https://openaq.org
-https://crt.sh
-https://shodan.io
-https://haveibeenpwned.com
-https://virustotal.com
-https://urlscan.io
-https://web.archive.org
-https://commoncrawl.org
-https://opendatacommons.org
-https://creativecommons.org
-https://eff.org
-https://aclu.org
-https://torproject.org
-https://proton.me
-https://signal.org
-https://matrix.org
-https://element.io
-https://mastodon.social
-https://joinmastodon.org
-https://lemmy.world
-https://kbin.social
-https://peertube.tv
-https://odysee.com
-https://ipfs.tech
-https://filecoin.io
-https://arweave.org
-https://handshake.org
-https://namecheap.com
-https://letsencrypt.org
-https://ietf.org
-https://w3.org
-https://whatwg.org
-https://icann.org
-https://isoc.org
-`;
+  const seen = new Set<string>();
+  const corpus: SeedRecord[] = [];
 
+  for (const cat of CATEGORIES) {
+    for (const line of cat.raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const normalized = normalizeIndexUrl(trimmed);
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        corpus.push({ url: normalized, categoryId: cat.id });
+      }
+    }
+  }
+
+  cachedCorpus = corpus;
+  return corpus;
+}
+
+/** Categories that actually have seeds, with counts. */
+export function getCategories(): Array<{ id: string; label: string; count: number }> {
+  const corpus = getCorpus();
+  return CATEGORIES
+    .map((c) => ({ id: c.id, label: c.label, count: corpus.filter((s) => s.categoryId === c.id).length }))
+    .filter((c) => c.count > 0);
+}
+
+/** Category label for a URL, if it's a known seed. */
+export function categoryOf(url: string): string | undefined {
+  const record = getCorpus().find((s) => s.url === url);
+  if (!record) return undefined;
+  return CATEGORIES.find((c) => c.id === record.categoryId)?.label;
+}
+
+/* ------------------------------------------------------------------ */
+/* Local selection history (never published)                           */
 /* ------------------------------------------------------------------ */
 
 const HISTORY_KEY = 'crawlstr:scout-history';
-const HISTORY_CAP = 500;
+const HISTORY_CAP = 1000;
 
-interface ScoutHistoryEntry {
-  url: string;
+interface HistoryEntry {
+  /** Times this device has scouted this seed. */
+  n: number;
+  /** Last scouted at (ms). */
   at: number;
 }
 
-let cachedSeeds: string[] | null = null;
+type History = Record<string, HistoryEntry>;
 
-/** Parsed, normalized, deduped seed list. */
-export function getSeeds(): string[] {
-  if (cachedSeeds) return cachedSeeds;
-
-  const seen = new Set<string>();
-  const seeds: string[] = [];
-  for (const line of SEED_TEXT.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const normalized = normalizeIndexUrl(trimmed);
-    if (normalized && !seen.has(normalized)) {
-      seen.add(normalized);
-      seeds.push(normalized);
-    }
-  }
-  cachedSeeds = seeds;
-  return seeds;
-}
-
-function readHistory(): ScoutHistoryEntry[] {
+function readHistory(): History {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed)
-      ? parsed.filter((e): e is ScoutHistoryEntry =>
-          typeof e?.url === 'string' && typeof e?.at === 'number')
-      : [];
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as History : {};
   } catch {
-    return [];
+    return {};
   }
 }
 
-function writeHistory(entries: ScoutHistoryEntry[]): void {
+function writeHistory(history: History): void {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(-HISTORY_CAP)));
+    // Prune oldest beyond the cap.
+    const entries = Object.entries(history);
+    if (entries.length > HISTORY_CAP) {
+      entries.sort((a, b) => a[1].at - b[1].at);
+      history = Object.fromEntries(entries.slice(entries.length - HISTORY_CAP));
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   } catch {
     // Storage unavailable — selection simply won't be remembered.
   }
 }
 
-/**
- * Pick a random seed, preferring URLs this device has never scouted.
- * When every seed has been used, the oldest picks recycle.
- * Returns null when the collection is empty.
- */
-export function pickRandomSeed(): string | null {
-  const seeds = getSeeds();
-  if (seeds.length === 0) return null;
+/* ------------------------------------------------------------------ */
+/* Selection                                                           */
+/* ------------------------------------------------------------------ */
 
-  const history = readHistory();
-  const used = new Map<string, number>(history.map((e) => [e.url, e.at]));
+/** Strategy mix. Tunable, but these are the defaults. */
+const STRATEGY_WEIGHTS = {
+  fresh: 40,
+  rare: 25,
+  category: 15,
+  stale: 10,
+  random: 10,
+} as const;
 
-  // Prefer never-selected seeds.
-  const fresh = seeds.filter((s) => !used.has(s));
-  let pick: string;
-
-  if (fresh.length > 0) {
-    pick = fresh[Math.floor(Math.random() * fresh.length)];
-  } else {
-    // Everything has been used — pick from the least-recently-used third.
-    const byAge = [...seeds].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0));
-    const pool = byAge.slice(0, Math.max(1, Math.ceil(seeds.length / 3)));
-    pick = pool[Math.floor(Math.random() * pool.length)];
+function pickWeightedStrategy(): keyof typeof STRATEGY_WEIGHTS {
+  const total = Object.values(STRATEGY_WEIGHTS).reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (const [strategy, weight] of Object.entries(STRATEGY_WEIGHTS)) {
+    roll -= weight;
+    if (roll <= 0) return strategy as keyof typeof STRATEGY_WEIGHTS;
   }
-
-  used.set(pick, Date.now());
-  writeHistory([...used.entries()].map(([url, at]) => ({ url, at })));
-  return pick;
+  return 'random';
 }
+
+function randomOf<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+/**
+ * Select a seed URL using the weighted strategy mix.
+ * Optionally constrained to a category.
+ */
+function selectSeed(corpus: SeedRecord[], history: History): SeedRecord {
+  const strategy = pickWeightedStrategy();
+
+  switch (strategy) {
+    case 'fresh': {
+      const fresh = corpus.filter((s) => !history[s.url]);
+      if (fresh.length > 0) return randomOf(fresh);
+      return selectSeed(corpus, history); // fall through to another strategy
+    }
+
+    case 'rare': {
+      const counts = corpus.map((s) => history[s.url]?.n ?? 0);
+      const min = Math.min(...counts);
+      const rarest = corpus.filter((s) => (history[s.url]?.n ?? 0) === min);
+      return randomOf(rarest);
+    }
+
+    case 'category': {
+      // Explore the least-explored category.
+      const catCounts = new Map<string, number>();
+      for (const s of corpus) {
+        catCounts.set(s.categoryId, (catCounts.get(s.categoryId) ?? 0) + (history[s.url]?.n ?? 0));
+      }
+      const minCount = Math.min(...catCounts.values());
+      const leastExplored = [...catCounts.entries()].filter(([, n]) => n === minCount).map(([id]) => id);
+      const catId = randomOf(leastExplored);
+      const inCategory = corpus.filter((s) => s.categoryId === catId);
+      // Prefer fresh within the category.
+      const fresh = inCategory.filter((s) => !history[s.url]);
+      return randomOf(fresh.length > 0 ? fresh : inCategory);
+    }
+
+    case 'stale': {
+      const byAge = [...corpus].sort((a, b) => (history[a.url]?.at ?? 0) - (history[b.url]?.at ?? 0));
+      const pool = byAge.slice(0, Math.max(1, Math.ceil(corpus.length / 3)));
+      return randomOf(pool);
+    }
+
+    case 'random':
+    default:
+      return randomOf(corpus);
+  }
+}
+
+/**
+ * Preview a random seed WITHOUT recording it. The UI shows the preview
+ * ("🎲 Random corner of the web") and the selection is only committed if
+ * the user actually starts the scout.
+ */
+export function previewRandomSeed(categoryId?: string): { url: string; category: string } | null {
+  let corpus = getCorpus();
+  if (categoryId) {
+    corpus = corpus.filter((s) => s.categoryId === categoryId);
+    if (corpus.length === 0) return null;
+  }
+  if (corpus.length === 0) return null;
+
+  const record = selectSeed(corpus, readHistory());
+  return { url: record.url, category: CATEGORIES.find((c) => c.id === record.categoryId)?.label ?? record.categoryId };
+}
+
+/**
+ * Commit a seed selection: record it in local history. Called when a scout
+ * actually starts — previews don't count.
+ */
+export function commitSeed(url: string): void {
+  const history = readHistory();
+  const entry = history[url];
+  history[url] = { n: (entry?.n ?? 0) + 1, at: Date.now() };
+  writeHistory(history);
+}
+
+/**
+ * Pick a random seed and record it immediately (used by the Random
+ * Explorer loop, where there's no preview step).
+ */
+export function pickRandomSeed(categoryId?: string): string | null {
+  const preview = previewRandomSeed(categoryId);
+  if (!preview) return null;
+  commitSeed(preview.url);
+  return preview.url;
+}
+
+/* ------------------------------------------------------------------ */
+/* Stats for the UI                                                    */
+/* ------------------------------------------------------------------ */
 
 /** Number of distinct seeds available. */
 export function seedCount(): number {
-  return getSeeds().length;
+  return getCorpus().length;
 }
 
-/** How many seeds this device has already scouted. */
+/** How many distinct seeds this device has scouted. */
 export function scoutedCount(): number {
-  return readHistory().length;
+  return Object.keys(readHistory()).length;
+}
+
+/** Total scouts this device has run. */
+export function totalScouts(): number {
+  return Object.values(readHistory()).reduce((sum, e) => sum + e.n, 0);
 }

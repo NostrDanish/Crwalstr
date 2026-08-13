@@ -84,15 +84,21 @@ export function CrawlerDashboard() {
     modes,
     setModePreference,
     currentSeed,
+    currentSeedCategory,
+    scoutPreview,
+    lastSession,
     stats,
     recentCrawls,
     indexerInfo,
     seedCount,
     scoutedCount,
+    categories,
     start,
     stop,
     seedUrl,
-    scoutRandom,
+    previewScout,
+    confirmScout,
+    dismissScoutPreview,
     clearAll,
     updateSettings,
     getSettings,
@@ -148,7 +154,7 @@ export function CrawlerDashboard() {
                 <CardDescription>
                   {isRunning
                     ? currentSeed
-                      ? `Scouting from ${new URL(currentSeed).hostname}`
+                      ? `Scouting ${currentSeedCategory ? `${currentSeedCategory} — ` : ''}${new URL(currentSeed).hostname}`
                       : 'Scouting the open web'
                     : 'Scout the web. Feed the network.'}
                 </CardDescription>
@@ -177,23 +183,101 @@ export function CrawlerDashboard() {
         </CardHeader>
 
         <CardContent className="pt-0 space-y-4">
-          {/* Random Scout — one button, zero setup */}
-          {!isRunning && (
+          {/* Random Scout — the onboarding flow */}
+          {!isRunning && !scoutPreview && !lastSession && (
             <div className="space-y-3">
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => scoutRandom()}
+                onClick={() => previewScout()}
                 disabled={!initialized}
                 className="w-full gap-2 border-primary/40 hover:bg-primary/10 hover:text-primary"
               >
                 <Shuffle className="h-4 w-4" />
-                Random Scout — pick a site for me
+                Explore a random corner of the web
               </Button>
               <p className="text-xs text-center text-muted-foreground">
-                {seedCount.toLocaleString()} curated starting points
+                {seedCount.toLocaleString()} curated starting points across {categories.length} categories
                 {scoutedCount > 0 && ` · you've scouted ${scoutedCount}`}
               </p>
+            </div>
+          )}
+
+          {/* Preview — "random corner" card */}
+          {!isRunning && scoutPreview && (
+            <div className="rounded-lg border border-primary/40 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                <Shuffle className="h-3.5 w-3.5" />
+                RANDOM CORNER
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">
+                  Category: <span className="text-foreground font-medium">{scoutPreview.category}</span>
+                </div>
+                <div className="font-mono text-sm truncate">{scoutPreview.url}</div>
+                <div className="text-xs text-muted-foreground">
+                  {modes[mode].maxPages > 0 ? `${modes[mode].label} · up to ${modes[mode].maxPages} pages` : 'Volunteer · until stopped'}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={() => confirmScout()} className="flex-1 gap-2">
+                  <Play className="h-4 w-4" />
+                  Scout This
+                </Button>
+                <Button variant="outline" onClick={() => previewScout()} className="gap-2">
+                  <Shuffle className="h-4 w-4" />
+                  Another
+                </Button>
+                <Button variant="ghost" size="icon" onClick={dismissScoutPreview} aria-label="Dismiss">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Session complete summary */}
+          {!isRunning && !scoutPreview && lastSession && (
+            <div className="rounded-lg border border-primary/40 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                SCOUT COMPLETE
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="font-bold">{lastSession.pages}</div>
+                  <div className="text-xs text-muted-foreground">pages</div>
+                </div>
+                <div>
+                  <div className="font-bold">{lastSession.discovered}</div>
+                  <div className="text-xs text-muted-foreground">URLs found</div>
+                </div>
+                <div>
+                  <div className="font-bold">{lastSession.feeds}</div>
+                  <div className="text-xs text-muted-foreground">feeds</div>
+                </div>
+                <div>
+                  <div className="font-bold">{lastSession.sitemaps}</div>
+                  <div className="text-xs text-muted-foreground">sitemaps</div>
+                </div>
+              </div>
+              {lastSession.seed && (
+                <p className="text-xs text-muted-foreground font-mono truncate">
+                  from {lastSession.seed}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setLastSession(null); previewScout(); }}
+                  className="flex-1 gap-2 border-primary/40 hover:bg-primary/10"
+                >
+                  <Shuffle className="h-4 w-4" />
+                  Explore Another
+                </Button>
+                <Button variant="ghost" onClick={() => setLastSession(null)}>
+                  Done
+                </Button>
+              </div>
             </div>
           )}
 

@@ -3,10 +3,15 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNostr } from '@nostrify/react';
-import { CrawlerEngine } from '@/crawler/engine';
+import { CrawlerEngine, type SessionSummary } from '@/crawler/engine';
 import { setRelayPublisher, getIndexerInfo } from '@/crawler/publisher';
-import { seedCount, scoutedCount } from '@/crawler/seeds';
+import { seedCount, scoutedCount, getCategories, categoryOf } from '@/crawler/seeds';
 import { CRAWL_MODES, type CrawlMode, type CrawlerStats, type CrawlerSettings } from '@/crawler/types';
+
+export interface ScoutPreview {
+  url: string;
+  category: string;
+}
 
 export function useCrawler() {
   const { nostr } = useNostr();
@@ -15,6 +20,8 @@ export function useCrawler() {
   const [initialized, setInitialized] = useState(false);
   const [mode, setMode] = useState<CrawlMode>('site');
   const [currentSeed, setCurrentSeed] = useState<string | null>(null);
+  const [scoutPreview, setScoutPreview] = useState<ScoutPreview | null>(null);
+  const [lastSession, setLastSession] = useState<SessionSummary | null>(null);
   const [stats, setStats] = useState<CrawlerStats>({
     pagesIndexed: 0,
     queueSize: 0,
@@ -57,6 +64,11 @@ export function useCrawler() {
 
     engine.onMode((newMode) => {
       setMode(newMode);
+    });
+
+    engine.onSessionComplete((summary) => {
+      setLastSession(summary);
+      setCurrentSeed(null);
     });
 
     return () => {
@@ -131,6 +143,31 @@ export function useCrawler() {
     return seed;
   }, [mode]);
 
+  /** Preview a random seed without committing — for the "🎲 Random corner" card. */
+  const previewScout = useCallback((categoryId?: string): ScoutPreview | null => {
+    const engine = engineRef.current;
+    if (!engine) return null;
+    const preview = engine.previewSeed(categoryId);
+    setScoutPreview(preview);
+    return preview;
+  }, []);
+
+  /** Start scouting the previewed seed. */
+  const confirmScout = useCallback(async (crawlMode?: CrawlMode): Promise<void> => {
+    const engine = engineRef.current;
+    if (!engine || !scoutPreview) return;
+    if (crawlMode && crawlMode !== mode) setMode(crawlMode);
+    setLastSession(null);
+    await engine.startScout(scoutPreview.url, crawlMode);
+    setCurrentSeed(scoutPreview.url);
+    setScoutPreview(null);
+    setIsRunning(true);
+  }, [scoutPreview, mode]);
+
+  const dismissScoutPreview = useCallback(() => {
+    setScoutPreview(null);
+  }, []);
+
   /** Random Explorer: keep scouting fresh random seeds within every limit. */
   const startExplorer = useCallback(async (): Promise<string | null> => {
     if (!engineRef.current) return null;
@@ -175,15 +212,22 @@ export function useCrawler() {
     modes: CRAWL_MODES,
     setModePreference,
     currentSeed,
+    currentSeedCategory: currentSeed ? categoryOf(currentSeed) : undefined,
+    scoutPreview,
+    lastSession,
     stats,
     recentCrawls,
     indexerInfo,
     seedCount: seedCount(),
     scoutedCount: scoutedCount(),
+    categories: getCategories(),
     start,
     stop,
     seedUrl,
     scoutRandom,
+    previewScout,
+    confirmScout,
+    dismissScoutPreview,
     startExplorer,
     clearAll,
     updateSettings,

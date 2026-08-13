@@ -14,7 +14,7 @@ import { hashContent } from './hasher';
 import { shouldCrawlUrl, getCrawlDelay, getSitemaps } from './robots';
 import { canMakeRequest } from './limits';
 import { publishIndexObservation } from './publisher';
-import { pickRandomSeed } from './seeds';
+import { pickRandomSeed, previewRandomSeed, commitSeed } from './seeds';
 import {
   initDB,
   addToQueue,
@@ -36,6 +36,15 @@ import {
   type CrawlerSettings,
   type CrawlJob,
 } from './types';
+
+/** What one scouting session accomplished — for the completion summary. */
+export interface SessionSummary {
+  seed: string | null;
+  pages: number;
+  discovered: number;
+  feeds: number;
+  sitemaps: number;
+}
 
 /**
  * Map well-known hosts to SIP-01 §9.2 `platform` extension values.
@@ -79,11 +88,14 @@ export class CrawlerEngine {
   private abortController: AbortController | null = null;
   private onStatsChange?: (stats: CrawlerStats) => void;
   private onModeChange?: (mode: CrawlMode) => void;
+  private onSessionEnd?: (summary: SessionSummary) => void;
 
   /** Active crawl mode — drives the session page budget. */
   private mode: CrawlMode = 'site';
   /** Pages crawled in the current session (reset on start). */
   private sessionPages = 0;
+  /** Session-scoped counters for the "SCOUT COMPLETE" summary. */
+  private session = { pages: 0, discovered: 0, feeds: 0, sitemaps: 0 };
   /** Random Explorer: when the session budget is spent, pick a fresh seed. */
   private explorer = false;
   /** The seed the current random scout started from (for display). */
@@ -116,6 +128,22 @@ export class CrawlerEngine {
     this.onModeChange = callback;
   }
 
+  /** Called when a session budget is spent and the crawler stops itself. */
+  onSessionComplete(callback: (summary: SessionSummary) => void): void {
+    this.onSessionEnd = callback;
+  }
+
+  /** Session-scoped counters (reset on every start). */
+  getSession(): SessionSummary {
+    return {
+      seed: this.currentSeed,
+      pages: this.session.pages,
+      discovered: this.session.discovered,
+      feeds: this.session.feeds,
+      sitemaps: this.session.sitemaps,
+    };
+  }
+
   private emitStats(): void {
     this.stats.uptime = this.running ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
     this.onStatsChange?.({ ...this.stats });
@@ -130,6 +158,7 @@ export class CrawlerEngine {
     this.running = true;
     this.startTime = Date.now();
     this.sessionPages = 0;
+    this.session = { pages: 0, discovered: 0, feeds: 0, sitemaps: 0 };
     this.abortController = new AbortController();
     this.emitStats();
     this.crawlLoop();
@@ -192,8 +221,8 @@ export class CrawlerEngine {
   }
 
   /**
-   * Random Scout: pick a seed from the curated collection (preferring ones
-   * this device has never scouted) and start a crawl in the current mode.
+   * Random Scout: pick a seed from the curated collection (weighted toward
+   * fresh/rare/under-explored corners) and start a crawl in the current mode.
    * Returns the chosen seed URL.
    */
   async scoutRandom(mode?: CrawlMode): Promise<string | null> {
@@ -202,6 +231,26 @@ export class CrawlerEngine {
     await this.seedUrl(seed);
     await this.start(mode);
     return seed;
+  }
+
+  /**
+   * Preview the next random seed WITHOUT recording it — lets the UI show
+   * "🎲 Random corner: https://…" before the user commits. Pair with
+   * startScout(url) when they accept.
+   */
+  previewSeed(categoryId?: string): { url: string; category: string } | null {
+    return previewRandomSeed(categoryId);
+  }
+
+  /**
+   * Start scouting a specific seed (usually one from previewSeed).
+   * Commits the selection to local history only now — a dismissed preview
+   * never counted against the seed.
+   */
+  async startScout(url: string, mode?: CrawlMode): Promise<void> {
+    commitSeed(url);
+    await this.seedUrl(url);
+    await this.start(mode);
   }
 
   /**
@@ -244,6 +293,7 @@ export class CrawlerEngine {
             const seed = pickRandomSeed();
             if (seed) {
               this.sessionPages = 0;
+              this.session = { pages: 0, discovered: 0, feeds: 0, sitemaps: 0 };
               this.probedSitemaps.clear();
               this.followedFeeds.clear();
               await this.seedUrl(seed);
@@ -271,14 +321,17 @@ export class CrawlerEngine {
             const seed = pickRandomSeed();
             if (seed) {
               this.sessionPages = 0;
+              this.session = { pages: 0, discovered: 0, feeds: 0, sitemaps: 0 };
               this.probedSitemaps.clear();
               this.followedFeeds.clear();
               await this.seedUrl(seed);
             } else {
+              this.onSessionEnd?.(this.getSession());
               await this.stop();
               return;
             }
           } else {
+            this.onSessionEnd?.(this.getSession());
             await this.stop();
             return;
           }
@@ -361,6 +414,7 @@ export class CrawlerEngine {
     // Update stats
     this.stats.pagesIndexed++;
     this.sessionPages++;
+    this.session.pages++;
     this.stats.bandwidthUsed += result.size;
     if (result.viaProxy) this.stats.viaProxy++;
     else this.stats.viaDirect++;
@@ -435,6 +489,7 @@ export class CrawlerEngine {
       }
       if (added > 0) {
         this.stats.urlsDiscovered += added;
+        this.session.discovered += added;
         this.stats.queueSize = await getQueueSize();
       }
     }
@@ -453,6 +508,7 @@ export class CrawlerEngine {
     if (!feed || feed.entries.length === 0) return;
 
     this.stats.feedsFound++;
+    this.session.feeds++;
     let discovered = 0;
 
     for (const entry of feed.entries) {
@@ -494,6 +550,7 @@ export class CrawlerEngine {
     }
 
     this.stats.urlsDiscovered += discovered;
+    this.session.discovered += discovered;
     this.stats.queueSize = await getQueueSize();
     console.debug(`[Crawler] Feed discovered: ${feedUrl} (${feed.entries.length} entries)`);
   }
@@ -516,6 +573,7 @@ export class CrawlerEngine {
       if (!sitemap) continue;
 
       this.stats.sitemapsFound++;
+      this.session.sitemaps++;
       console.debug(`[Crawler] Sitemap discovered: ${sitemapUrl} (${sitemap.urls.length} URLs, ${sitemap.sitemaps.length} children)`);
 
       // Sample page URLs — a sitemap can hold tens of thousands.
@@ -566,6 +624,7 @@ export class CrawlerEngine {
 
       if (added > 0) {
         this.stats.urlsDiscovered += added;
+        this.session.discovered += added;
         this.stats.queueSize = await getQueueSize();
       }
     }

@@ -126,9 +126,40 @@ Open the printed URL, add a seed URL, press **Start Crawling**.
 
 ### Random Scout
 
-The fastest way to contribute: press **Random Scout** and Crawlstr picks a starting point from a curated collection of long-tail sites — indie blogs, awesome lists, documentation, archives, open data — preferring ones your device hasn't scouted before. No account, no configuration, no URL needed.
+The fastest way to contribute: press **Explore a random corner of the web** and Crawlstr shows you a starting point — its category and URL — before anything happens. **Scout This** starts the crawl; **Another** reshuffles. No account, no configuration, no URL needed.
 
 Selection history stays in your browser (localStorage) and is **never published** — only the resulting page observations go to Nostr.
+
+#### The seed corpus
+
+The corpus lives in `src/data/seeds/*.txt` — **one category per plain-text file**, so improving the dataset never means touching crawler logic:
+
+```
+src/data/seeds/
+├── nostr.txt      ← Nostr ecosystem
+├── bitcoin.txt    ← Bitcoin & open money
+├── dev.txt        ← Dev resources & awesome lists
+├── science.txt    ← Science & education
+├── books.txt      ← Books, archives & libraries
+├── music.txt      ← Music, art & culture
+├── games.txt      ← Games
+├── opendata.txt   ← Open data & internet infrastructure
+└── indie.txt      ← Indie blogs & the small web
+```
+
+#### How a seed is picked
+
+Not plain `Math.random()` over a flat list. Each pick rolls a weighted strategy, tuned for **long-tail coverage**:
+
+| Weight | Strategy | Picks from |
+|--------|----------|------------|
+| 40% | **Fresh** | Seeds this device has never scouted |
+| 25% | **Rare** | Seeds this device has scouted least often |
+| 15% | **Category** | The category this device has explored least |
+| 10% | **Stale** | Seeds not scouted for the longest time |
+| 10% | **Random** | Pure randomness |
+
+Previewing a seed (the "random corner" card) does **not** count as scouting it — a dismissed preview never penalizes the seed. The selection commits only when the crawl actually starts.
 
 ### Seed a URL
 
@@ -303,9 +334,11 @@ src/
 │   ├── robots.ts           ← robots.txt parser (policies + Sitemap: discovery)
 │   ├── feed.ts             ← RSS/Atom detection + parsing (cheap discovery)
 │   ├── sitemap.ts          ← XML sitemap parsing (urlset + sitemapindex, sampled)
-│   ├── seeds.ts            ← Random Scout seed collection + local pick history
+│   ├── seeds.ts            ← Random Scout selection engine (weighted strategies)
 │   ├── limits.ts           ← Per-domain rate limiting
 │   └── types.ts            ← TypeScript interfaces (incl. crawl modes)
+├── data/
+│   └── seeds/              ← The seed corpus: one plain-text file per category
 ├── components/
 │   └── crawler/
 │       └── CrawlerDashboard.tsx  ← Main UI (toggle, stats, seed, history, settings)
