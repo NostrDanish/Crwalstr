@@ -2,12 +2,19 @@
 
 Crawlstr is a **browser-based web crawler** that publishes to the **shared SIP-01
 (Search Index Protocol) index** on Nostr. It implements the **canonical SIP-01
-specification v1.1** — [github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)
+specification v1.2** — [github.com/NostrDanish/SIP-01](https://github.com/NostrDanish/SIP-01)
 (`public/spec/SIP-01.md`) — byte-compatibly with
 [0xSearchstr](https://github.com/NostrDanish/0xSearchstr),
 [0xPresearchstr](https://github.com/NostrDanish/0xPresearchstr),
 [UNCAGED-ENGINE](https://github.com/NostrDanish/UNCAGED-ENGINE), and the
 [UNCAGED Index Relay](https://github.com/NostrDanish/UNCAGED-Index-Relay).
+
+> **v1.2 note:** that revision audited NIP references and added the §20
+> dependency table. The wire format is unchanged — schema `v` stays `"1"`, and
+> every v1/v1.1 event remains valid. Of the v1.2 changes, the ones that touch
+> us: addressable-kind semantics are now cited from NIP-01 (NIP-33 was folded
+> in), and the `l` tag convention is NIP-32's, used here in the bare two-letter
+> form per §12.5 — which is exactly what we emit.
 
 ## Protocol Compatibility
 
@@ -56,7 +63,7 @@ public metadata."*
 | `v` | ✔ | Schema version `"1"` |
 | `x` | ✔ | Content hash: `sha256(title + "\n" + description)` (§8) |
 | `alt` | ✔ | Human-readable summary (the `alt` convention; spec §12.3) |
-| `l` | – | ISO 639-1 language code (validated two-letter shape) |
+| `l` | – | ISO 639-1 language code, bare two-letter form (§12.5; convention from NIP-32) |
 | `t` | – | 0–8 lowercase topic tags matching `^[a-z0-9][a-z0-9-]{0,99}$` |
 | `published` | – | Unix seconds — page's claimed publication time (§12.2) |
 | `source` | – | `"crawlstr/1"` — identifies this software (≤ 100 chars) |

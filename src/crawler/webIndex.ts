@@ -2,6 +2,11 @@
  * SIP-01 (Search Index Protocol) — Crawlstr publisher implementation.
  * Canonical spec: https://github.com/NostrDanish/SIP-01 (public/spec/SIP-01.md)
  *
+ * Spec revision implemented: v1.2. The v1.2 revision audited NIP references
+ * (NIP-33 folded into NIP-01; the `l` convention is NIP-32's, used here in the
+ * bare two-letter form per §12.5) and added the §20 dependency table — the
+ * wire format is unchanged and every v1/v1.1 event remains valid.
+ *
  * Byte-compatible with the canonical reference port
  * (SIP-01 repo, src/lib/sip01-utils.ts), which is itself byte-compatible with:
  *   - 0xSearchstr / UNCAGED-ENGINE  src/lib/webIndex.ts   (publisher/reader)
@@ -51,7 +56,7 @@ export const TOPIC_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 /** Extension keyword shape (spec §9.1 rule 5). */
 export const EXTENSION_VALUE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$/;
 
-/** ISO 639-1 language code shape (spec §6, `l` tag). */
+/** ISO 639-1 language code shape (spec §6, bare `l` tag per §12.5 / NIP-32). */
 const LANG_RE = /^[a-z]{2}$/;
 
 /** ISO 3166-1 alpha-2 country code shape (spec §9.2, `country` tag). */
