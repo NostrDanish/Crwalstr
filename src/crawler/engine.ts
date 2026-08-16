@@ -13,7 +13,8 @@ import { normalizeIndexUrl } from './webIndex';
 import { hashContent } from './hasher';
 import { shouldCrawlUrl, getCrawlDelay, getSitemaps } from './robots';
 import { canMakeRequest } from './limits';
-import { publishIndexObservation } from './publisher';
+import { publishIndexObservation, publishHeartbeatEvent } from './publisher';
+import { buildHeartbeat, HEARTBEAT_INTERVAL_MS } from './heartbeat';
 import { pickRandomSeed, previewRandomSeed, commitSeed } from './seeds';
 import {
   initDB,
@@ -104,6 +105,8 @@ export class CrawlerEngine {
   private probedSitemaps = new Set<string>();
   /** Feeds already followed this run. */
   private followedFeeds = new Set<string>();
+  /** Heartbeat timer — a running node announces itself every 10 minutes. */
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(settings?: Partial<CrawlerSettings>) {
     const stored = localStorage.getItem('crawler-settings');
@@ -161,12 +164,14 @@ export class CrawlerEngine {
     this.session = { pages: 0, discovered: 0, feeds: 0, sitemaps: 0 };
     this.abortController = new AbortController();
     this.emitStats();
+    this.startHeartbeats();
     this.crawlLoop();
   }
 
   async stop(): Promise<void> {
     this.running = false;
     this.explorer = false;
+    this.stopHeartbeats();
     this.abortController?.abort();
     this.emitStats();
   }
@@ -645,6 +650,44 @@ export class CrawlerEngine {
       return false;
     } catch {
       return true;
+    }
+  }
+
+  /**
+   * Node heartbeat (kind 16919, replaceable) — published on start and every
+   * 10 minutes while running. This is how the SIP-01 dashboard sees the
+   * scout network: who's alive, what shard, coarse platform/network class,
+   * self-reported counters.
+   *
+   * Self-reported health metadata only — never a reputation input, and
+   * coarse by design (no location, no IP, no device fingerprint).
+   */
+  private startHeartbeats(): void {
+    this.stopHeartbeats();
+    this.publishHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.publishHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeats(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private async publishHeartbeat(): Promise<void> {
+    try {
+      const event = await buildHeartbeat({
+        pagesIndexed: this.stats.pagesIndexed,
+        queueSize: this.stats.queueSize,
+        published: this.stats.pagesIndexed, // pages indexed ≈ observations published
+      });
+      await publishHeartbeatEvent(event);
+    } catch (error) {
+      // Heartbeats are best-effort; a missed beat just reads as offline.
+      console.debug('[Crawler] Heartbeat failed:', error);
     }
   }
 

@@ -21,9 +21,57 @@ specification v1.2** — [github.com/NostrDanish/SIP-01](https://github.com/Nost
 | Schema | Kind | Type | Status |
 |--------|------|------|--------|
 | Web Index Observation (SIP-01) | **39697** | addressable | **Written** by Crawlstr |
+| Crawler node heartbeat | **16919** | replaceable | **Written** by Crawlstr |
 
-Crawlstr is a **pure SIP-01 publisher** — it only writes kind 39697 events.
-It does NOT write community submissions (kind 30078) or query caches.
+Crawlstr is a **pure SIP-01 publisher** for observations — it does NOT write
+community submissions (kind 30078) or query caches. Kind 16919 is the shared
+crawler-network health event (schema: Indexstr's
+[`src/crawler/heartbeat.ts`](https://github.com/NostrDanish/indxestr/blob/main/src/crawler/heartbeat.ts),
+consumed read-only by the [SIP-01 site](https://github.com/NostrDanish/SIP-01)
+dashboard) — documented below.
+
+## Kind 16919 — Crawler Node Heartbeat
+
+A replaceable event (latest per pubkey) announcing *"this scout is alive and
+indexing."* Published on crawler start and every 10 minutes while running.
+Consumers treat heartbeats older than **1 hour** as offline.
+
+```json
+{
+  "kind": 16919,
+  "pubkey": "<device indexer pubkey>",
+  "created_at": 1786250000,
+  "content": "{\"v\":\"1\",\"shard\":\"C4\",\"platform\":\"desktop\",\"network\":\"wifi-or-better\",\"charging\":true,\"stats\":{\"pagesIndexed\":1204,\"queueSize\":183,\"published\":1198}}",
+  "tags": [
+    ["v", "1"],
+    ["shard", "C4"],
+    ["source", "crawlstr/1"],
+    ["alt", "Crawlstr node heartbeat: shard C4"]
+  ]
+}
+```
+
+**Tags:** `v` (node protocol version), `shard` (home shard, two uppercase hex
+chars — first byte of the indexer pubkey), `source` (`crawlstr/1`), `alt`
+(human-readable).
+
+**Content** (JSON): `v`, `shard`, coarse `platform` (`mobile`/`desktop`),
+coarse `network` class, `charging`, and self-reported `stats`
+(`pagesIndexed`, `queueSize`, `published`).
+
+**Privacy contract:** no location, no IP, no device model, no fine-grained
+fingerprint. Battery/network are deliberately coarse classes.
+
+**Trust contract:** heartbeats are *self-reported* — usable for network
+health/coverage estimates only. Reputation is derived from signed kind 39697
+observations (independent and comparable across indexers), never from
+heartbeat claims.
+
+**Sharding:** the URL→shard map is FNV-1a over the SIP-01-normalized URL
+(`fnv1a32(url) >> 24`, 256 shards), ported byte-compatibly from Indexstr so
+both node classes compute the same assignment. Crawlstr only uses it for the
+heartbeat's home-shard field — Indexstr does the actual preferential
+scheduling.
 
 ## What Crawlstr Writes
 

@@ -70,6 +70,7 @@ Most "decentralized search" projects still run centralized crawlers. Crawlstr ma
 | **Rate limited** | 5–8 seconds between requests per domain |
 | **Persistent queue** | IndexedDB-backed, survives browser restarts |
 | **Offline capable** | Crawl queue persists; publishes when Nostr is reachable |
+| **Network heartbeat** | Kind 16919 — visible on the SIP-01 dashboard while running |
 | **PWA** | Installable, works on mobile and desktop |
 
 ---

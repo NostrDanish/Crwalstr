@@ -1,7 +1,8 @@
 /**
  * Index publisher — signs and publishes SIP-01 web index observations
- * (kind 39697). Canonical spec: https://github.com/NostrDanish/SIP-01
- * (public/spec/SIP-01.md, v1.1).
+ * (kind 39697) and crawler node heartbeats (kind 16919).
+ * Canonical spec: https://github.com/NostrDanish/SIP-01
+ * (public/spec/SIP-01.md, v1.2).
  *
  * Every observation is signed by THIS DEVICE's dedicated indexer identity
  * (indexerIdentity.ts) — never the user's personal Nostr key, and
@@ -70,6 +71,15 @@ export async function publishIndexObservation(
 
   await publishToIndexRelays(signedEvent);
   return normalized;
+}
+
+/**
+ * Publish a node heartbeat (kind 16919, replaceable) to the index relays.
+ * Best-effort, same as observations — the heartbeat is health metadata, and
+ * a missed beat just reads as "offline" on dashboards until the next one.
+ */
+export async function publishHeartbeatEvent(event: NostrEvent): Promise<void> {
+  await publishToIndexRelays(event);
 }
 
 /**
