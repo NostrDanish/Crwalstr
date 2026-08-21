@@ -44,6 +44,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { CrawlstrLogo } from '@/components/crawler/CrawlstrLogo';
+import { RelayManager } from '@/components/crawler/RelayManager';
 import { useCrawler } from '@/hooks/useCrawler';
 import { cn } from '@/lib/utils';
 
@@ -734,6 +735,11 @@ export function CrawlerDashboard() {
                   />
                 </div>
               </div>
+
+              <Separator />
+
+              {/* Relay management */}
+              <RelayManager />
 
               <Separator />
 

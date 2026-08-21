@@ -258,18 +258,33 @@ Full schema documentation: [NIP.md](NIP.md) · Canonical spec: [SIP-01 v1.1](htt
 
 Observations are published to:
 
+**SIP-01-aware index relays:**
 - `wss://relay-na1.metanomalist.com/`
-- `wss://relay.ditto.pub/` (NIP-50 search)
+- `wss://test-sip-relay.sip-01test.workers.dev/`
+- `wss://sip-relay-2.sip-booster-relay.workers.dev/`
+- `wss://sip-relay-3.uncaged-sip.workers.dev/`
+- `wss://sip-relay-4.sip-relay-4.workers.dev/`
+
+**Search relays (NIP-50):**
+- `wss://relay.nostr.band/`
+- `wss://relay.ditto.pub/`
+- `wss://search.nos.today/` (read-only — "blocked: writes disabled")
+- `wss://relay.noswhere.com/`
+
+**Write relays (for propagation):**
 - `wss://jskitty.cat/nostr`
-- `wss://search.nos.today/` (NIP-50 search)
 - `wss://relay.primal.net/`
-- `wss://nostr.hifish.org/`
-- `wss://relay.nostr.band/` (NIP-50 search)
-- `wss://relay.noswhere.com/` (NIP-50 search)
 - `wss://relay.damus.io/`
+- `wss://nostr.hifish.org/`
 - `ws://acuy3mjnv26tkyaaucndlxmg2ocntz4rtebhavk57vgruozm42iaznqd.onion/` (Tor only — reachable from Tor Browser; clearnet browsers skip it)
 
 Each observation is pushed to every relay in the set via targeted per-relay connections.
+
+**Custom relays:** add your own in Settings → Publish relays. They persist locally and merge into the publish set. The built-in set can't be removed.
+
+**Auto-discovery:** Settings → **Discover NIP-50 / SIP-01 relays** queries relay-monitor announcements (NIP-66 kind 30166), filters to relays advertising NIP-50, then verifies each candidate with a live capability probe (NIP-11 — checking `supported_nips` for 50 and the `uncaged_index` block for SIP-01). Verified candidates appear with one-click add; nothing is added automatically. Discovery is a hint, never a requirement — the built-in set keeps the app fully functional without it (NIP-66's risk guidance).
+
+**Capability testing:** every relay in the list has a test button that probes its NIP-11 document and shows SIP-01 / NIP-50 badges plus latency.
 
 ---
 
