@@ -316,6 +316,8 @@ Crawlstr is honest about what a browser can and cannot do:
 - **JavaScript rendering** — Crawlstr parses static HTML. Single-page apps that require JavaScript rendering won't have their full content extracted.
 - **Background execution** — Mobile browsers may throttle or kill background tabs. The crawler is most effective when the tab is active.
 - **Rate limits** — Per-domain rate limiting is built-in (5–8 seconds between requests). This is respectful by design.
+- **Resource budgets are real** — the bandwidth cap counts **every** byte (pages, robots.txt, feeds, sitemaps, proxy overhead), and the pages/hour cap is enforced on a sliding window. The page-size cap is clamped to the remaining hourly budget so a single page can't overshoot it.
+- **SSRF guard at the proxy boundary** — before any URL is handed to fetch (direct or proxied), it's checked against localhost, RFC1918, link-local (incl. cloud metadata `169.254.169.254`), CGNAT, and the odd IPv4 forms browsers accept (integer, hex, octal, short), plus IPv6 loopback/ULA/link-local. Direct-path redirects are re-checked against the same list. The remaining gap — a public URL that 302s into private space *at the proxy* — is the proxy operator's to close, and we say so.
 
 For unrestricted crawling, run a desktop/CLI SIP-01 crawler alongside Crawlstr.
 
@@ -339,8 +341,10 @@ For unrestricted crawling, run a desktop/CLI SIP-01 crawler alongside Crawlstr.
 src/
 ├── crawler/
 │   ├── engine.ts           ← Main crawler orchestrator (crawl loop, queue, scheduling)
-│   ├── queue.ts            ← IndexedDB persistent queue (survives restarts)
-│   ├── fetcher.ts          ← HTTP fetcher (CORS, timeout, size limits)
+│   ├── queue.ts            ← IndexedDB queue (ready-job scheduling) + observed/fetched split
+│   ├── fetcher.ts          ← HTTP fetcher (CORS, timeout, SSRF-guarded, metered)
+│   ├── safety.ts           ← SSRF guard — refuses non-public targets at the proxy boundary
+│   ├── meter.ts            ← Sliding-window resource accounting (every byte, every page)
 │   ├── parser.ts           ← HTML parser (title, description, text, links, language)
 │   ├── hasher.ts           ← SHA-256 content hashing for local dedup
 │   ├── webIndex.ts         ← SIP-01: URL normalization, event build/parse (byte-compatible)

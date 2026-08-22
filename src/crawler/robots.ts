@@ -5,6 +5,7 @@
 // "failed open" — claiming to respect robots.txt while ignoring it entirely.
 
 import { CORS_PROXY_TEMPLATE } from './fetcher';
+import { recordFetch } from './meter';
 
 const robotsCache = new Map<string, { rules: RobotsRules; fetchedAt: number }>();
 const CACHE_TTL = 3600000; // 1 hour
@@ -59,7 +60,9 @@ async function fetchRobotsText(robotsUrl: string): Promise<string | null> {
       });
       // 404 = no robots.txt = crawling allowed. Distinguish from network failure.
       if (!response.ok) return '';
-      return await response.text();
+      const text = await response.text();
+      recordFetch(text.length); // robots.txt traffic counts toward the budget
+      return text;
     } finally {
       clearTimeout(timeoutId);
     }

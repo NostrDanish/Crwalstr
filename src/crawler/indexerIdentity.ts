@@ -7,6 +7,20 @@
  * are never automatically linked.
  *
  * Same pattern as UNCAGED-ENGINE / 0xSearchstr.
+ *
+ * STORAGE THREAT MODEL (the audit's key-storage finding), stated plainly:
+ * the secret lives in localStorage, so any JS executing on this origin can
+ * read it. That is inherent to browser signing — Nostr uses Schnorr over
+ * secp256k1, which WebCrypto doesn't expose, so a non-exportable CryptoKey
+ * is impossible no matter how we store it. What we CAN control:
+ *   - the secret is read only inside publisher.ts and heartbeat.ts (signing);
+ *     it never enters React state, component props, logs, or the DOM.
+ *   - the key signs ONLY public web-observation events (kind 39697) and
+ *     node heartbeats (kind 16919) — no funds, no DMs, no identity.
+ *   - regenerating is cheap and reputation does not transfer, so a stolen
+ *     key's value to an attacker is near zero.
+ *   - XSS anywhere on origin remains the real risk — hence the strict CSP
+ *     in index.html and the URL sanitization rules.
  */
 import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import { nip19 } from 'nostr-tools';

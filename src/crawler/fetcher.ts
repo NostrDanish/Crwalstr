@@ -9,6 +9,9 @@
 // fall back to a CORS proxy so the crawler actually works on real websites.
 // The proxy is honest about the trade-off — see PROXY_NOTE below.
 
+import { isPubliclyFetchable } from './safety';
+import { recordFetch } from './meter';
+
 /** CORS proxy used when a direct cross-origin fetch is blocked. */
 export const CORS_PROXY_TEMPLATE = 'https://proxy.shakespeare.diy/?url={href}';
 
@@ -50,6 +53,8 @@ async function attempt(
   requestUrl: string,
   maxSizeKB: number,
   timeoutMs: number,
+  /** True on the direct path — response.url is then the real final URL. */
+  checkRedirectTarget: boolean,
 ): Promise<RawFetch | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -67,6 +72,17 @@ async function attempt(
 
     if (!response.ok) return null;
 
+    // Redirect re-check: a public URL can 302 into private space. On the
+    // direct path, response.url is where we actually landed — guard it.
+    // (On the proxied path the proxy follows redirects server-side; the
+    // proxy operator owns that check, and we say so in the UI.)
+    if (checkRedirectTarget && response.url && response.url !== requestUrl) {
+      if (!isPubliclyFetchable(response.url)) {
+        console.debug('[Crawler] Refused: redirect into non-public address', response.url);
+        return null;
+      }
+    }
+
     const contentType = response.headers.get('content-type') ?? '';
 
     // Proxies sometimes omit/rewrite content-type. Accept empty and sniff later.
@@ -82,6 +98,10 @@ async function attempt(
 
     const html = await response.text();
     if (html.length > maxSizeKB * 1024) return null;
+
+    // Meter EVERY fetched byte, including proxy overhead and content we
+    // later discard — the budget is about what we consumed, not what we kept.
+    recordFetch(html.length);
 
     // Sniff: make sure this is actually markup before handing it to the parser.
     if (!/<\s*(!doctype|html|head|body|title|meta|div|a|p)\b/i.test(html.slice(0, 4000))) {
@@ -100,7 +120,13 @@ async function attempt(
  * Returns raw text, or null.
  */
 export async function fetchXml(url: string, maxSizeKB = 1024): Promise<string | null> {
-  const tryOnce = async (requestUrl: string): Promise<string | null> => {
+  // SSRF guard — never hand a non-public target to fetch, direct or proxied.
+  if (!isPubliclyFetchable(url)) {
+    console.debug('[Crawler] Refused non-public URL:', url);
+    return null;
+  }
+
+  const tryOnce = async (requestUrl: string, direct: boolean): Promise<string | null> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
@@ -112,8 +138,18 @@ export async function fetchXml(url: string, maxSizeKB = 1024): Promise<string | 
         headers: { Accept: 'application/rss+xml,application/atom+xml,application/xml,text/xml,text/html,*/*;q=0.8' },
       });
       if (!response.ok) return null;
+
+      // Redirect re-check on the direct path (see fetchPage for rationale).
+      if (direct && response.url && response.url !== requestUrl && !isPubliclyFetchable(response.url)) {
+        console.debug('[Crawler] Refused: redirect into non-public address', response.url);
+        return null;
+      }
+
       const text = await response.text();
       if (text.length > maxSizeKB * 1024) return null;
+
+      // Meter every byte, kept or not.
+      recordFetch(text.length);
       return text;
     } finally {
       clearTimeout(timeoutId);
@@ -121,13 +157,13 @@ export async function fetchXml(url: string, maxSizeKB = 1024): Promise<string | 
   };
 
   try {
-    return await tryOnce(url);
+    return await tryOnce(url, true);
   } catch {
     // CORS — fall through to the proxy.
   }
 
   try {
-    return await tryOnce(proxyUrl(url));
+    return await tryOnce(proxyUrl(url), false);
   } catch {
     return null;
   }
@@ -146,9 +182,16 @@ export async function fetchPage(
   const allowProxy = options.allowProxy ?? true;
   const timeoutMs = options.timeoutMs ?? 15000;
 
+  // SSRF guard — never hand a non-public target to fetch, direct or proxied.
+  // This is the primary check; the in-flight redirect check is secondary.
+  if (!isPubliclyFetchable(url)) {
+    console.debug('[Crawler] Refused non-public URL:', url);
+    return null;
+  }
+
   // --- 1. Direct fetch (works only for CORS-enabled sites) ---
   try {
-    const direct = await attempt(url, maxSizeKB, timeoutMs);
+    const direct = await attempt(url, maxSizeKB, timeoutMs, true);
     if (direct) {
       return { ...direct, size: direct.html.length, viaProxy: false };
     }
@@ -169,7 +212,7 @@ export async function fetchPage(
 
   // --- 2. Proxy fallback ---
   try {
-    const proxied = await attempt(proxyUrl(url), maxSizeKB, timeoutMs);
+    const proxied = await attempt(proxyUrl(url), maxSizeKB, timeoutMs, false);
     if (!proxied) return null;
     return { ...proxied, size: proxied.html.length, viaProxy: true };
   } catch (error) {

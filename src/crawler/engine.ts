@@ -16,6 +16,7 @@ import { canMakeRequest } from './limits';
 import { publishIndexObservation, publishHeartbeatEvent } from './publisher';
 import { buildHeartbeat, HEARTBEAT_INTERVAL_MS } from './heartbeat';
 import { pickRandomSeed, previewRandomSeed, commitSeed } from './seeds';
+import { bytesLastHour, pagesLastHour, recordPage, remainingBytesThisHour } from './meter';
 import {
   initDB,
   addToQueue,
@@ -23,6 +24,7 @@ import {
   removeFromQueue,
   getQueueSize,
   getCrawled,
+  isFetched,
   markCrawled,
   findByHash,
   getCrawledCount,
@@ -354,9 +356,10 @@ export class CrawlerEngine {
   }
 
   private async crawlUrl(job: CrawlJob): Promise<void> {
-    // Check if already crawled
-    const existing = await getCrawled(job.url);
-    if (existing) {
+    // Check if already crawled — but only skip when we ACTUALLY fetched it.
+    // Feed/sitemap-derived 'observed' entries must not block a real fetch
+    // (a feed can announce a page that fails when actually downloaded).
+    if (await isFetched(job.url)) {
       await removeFromQueue(job.url);
       this.stats.skipped++;
       return;
@@ -374,8 +377,16 @@ export class CrawlerEngine {
       }
     }
 
-    // Fetch page
-    const result = await fetchPage(job.url, this.settings.maxPageSizeKB);
+    // Fetch page. Clamp the size cap to the remaining hourly bandwidth so a
+    // single page can't blow the budget — the audit's overshoot finding.
+    const bandwidthLimitBytes = this.settings.maxBandwidthMB * 1024 * 1024;
+    const remainingKB = Math.floor(remainingBytesThisHour(bandwidthLimitBytes) / 1024);
+    const effectiveMaxKB = Math.max(0, Math.min(this.settings.maxPageSizeKB, remainingKB));
+    if (effectiveMaxKB < 16) {
+      // Not enough budget left for a meaningful page — idle until the window opens.
+      return;
+    }
+    const result = await fetchPage(job.url, effectiveMaxKB);
     if (!result) {
       this.stats.errors++;
       this.stats.fetchFailed++;
@@ -420,6 +431,7 @@ export class CrawlerEngine {
     this.stats.pagesIndexed++;
     this.sessionPages++;
     this.session.pages++;
+    recordPage(); // pages/hour budget window
     this.stats.bandwidthUsed += result.size;
     if (result.viaProxy) this.stats.viaProxy++;
     else this.stats.viaDirect++;
@@ -525,8 +537,11 @@ export class CrawlerEngine {
       if (existing) continue;
 
       // Index the entry directly — the feed itself is the site's own summary.
+      // Mark as 'observed', NOT 'fetched': we read the feed's claim about the
+      // page, we didn't fetch the page. The queue entry below still schedules
+      // a real fetch, and observed≠fetched means that fetch won't be skipped.
       if (entry.title && entry.title !== normalized) {
-        await markCrawled(normalized, await hashContent(entry.title), entry.title);
+        await markCrawled(normalized, await hashContent(entry.title), entry.title, 'observed');
         const host = new URL(normalized).hostname;
         const platform = detectPlatform(host);
         await publishIndexObservation({
@@ -587,8 +602,8 @@ export class CrawlerEngine {
       for (const url of sample) {
         const normalized = normalizeIndexUrl(url);
         if (!normalized) continue;
-        const existing = await getCrawled(normalized);
-        if (existing) continue;
+        // Only skip URLs we ACTUALLY fetched — observed ones still get a real fetch.
+        if (await isFetched(normalized)) continue;
         if (this.looksLikeTrap(normalized)) continue;
 
         await addToQueue({
@@ -612,8 +627,7 @@ export class CrawlerEngine {
             for (const url of childSample) {
               const normalized = normalizeIndexUrl(url);
               if (!normalized || this.looksLikeTrap(normalized)) continue;
-              const existing = await getCrawled(normalized);
-              if (existing) continue;
+              if (await isFetched(normalized)) continue;
               await addToQueue({
                 url: normalized,
                 priority: fromJob.priority * 0.5,
@@ -718,8 +732,18 @@ export class CrawlerEngine {
       }
     }
 
-    // Check bandwidth limit
-    if (this.stats.bandwidthUsed > this.settings.maxBandwidthMB * 1024 * 1024) {
+    // --- Resource budgets (the audit's #1 finding) ---
+    // Bandwidth: meter.ts counts EVERY byte — pages, robots.txt, feeds,
+    // sitemaps, proxy overhead — not just successfully parsed pages.
+    // Gate on the minimum meaningful page size so crawlUrl never busy-loops
+    // on a budget too small to fetch with.
+    const bandwidthLimitBytes = this.settings.maxBandwidthMB * 1024 * 1024;
+    if (bytesLastHour() + 16 * 1024 > bandwidthLimitBytes) {
+      return false;
+    }
+
+    // Pages/hour: previously advertised in settings but never enforced.
+    if (pagesLastHour() >= this.settings.maxPagesPerHour) {
       return false;
     }
 

@@ -16,6 +16,16 @@ interface CrawlerDB extends DBSchema {
       contentHash: string;
       title: string;
       crawledAt: number;
+      /**
+       * 'fetched' — we downloaded and parsed the page.
+       * 'observed' — we only saw it referenced (RSS/Atom feed, sitemap) and
+       * published an observation, but never fetched the page itself.
+       *
+       * The audit's point: observed ≠ fetched. A feed can announce a page
+       * that 404s when actually fetched, so feed-derived entries must not
+       * block a future real fetch.
+       */
+      status: 'fetched' | 'observed';
     };
     indexes: { 'by-hash': string };
   };
@@ -26,13 +36,21 @@ let db: IDBPDatabase<CrawlerDB> | null = null;
 export async function initDB(): Promise<IDBPDatabase<CrawlerDB>> {
   if (db) return db;
 
-  db = await openDB<CrawlerDB>('searchstr-crawler', 1, {
-    upgrade(database) {
-      const queueStore = database.createObjectStore('queue', { keyPath: 'url' });
-      queueStore.createIndex('by-priority', 'priority');
+  db = await openDB<CrawlerDB>('searchstr-crawler', 2, {
+    upgrade(database, oldVersion) {
+      if (oldVersion < 1) {
+        const queueStore = database.createObjectStore('queue', { keyPath: 'url' });
+        queueStore.createIndex('by-priority', 'priority');
 
-      const crawledStore = database.createObjectStore('crawled', { keyPath: 'url' });
-      crawledStore.createIndex('by-hash', 'contentHash');
+        const crawledStore = database.createObjectStore('crawled', { keyPath: 'url' });
+        crawledStore.createIndex('by-hash', 'contentHash');
+      }
+      // v2: crawled records gain a status field. Existing records predate the
+      // field — treat them as 'fetched' (they were, by definition, at the time).
+      if (oldVersion < 2) {
+        // No schema change needed — 'status' is a plain property, and the
+        // 'by-hash' index is unchanged. Backfill happens lazily in code.
+      }
     },
   });
 
@@ -48,18 +66,21 @@ export async function getNextJob(): Promise<CrawlJob | null> {
   const database = await initDB();
   const tx = database.transaction('queue', 'readonly');
   const index = tx.store.index('by-priority');
-  const cursor = await index.openCursor(null, 'prev'); // Highest priority first
 
-  if (!cursor) return null;
-
-  const job = cursor.value;
-
-  // Check if we should wait
-  if (job.nextAttempt && Date.now() < job.nextAttempt) {
-    return null;
+  // Walk highest→lowest priority and return the first job that is READY.
+  // The previous version looked at only the single top job and returned null
+  // when it was delayed — starving ready jobs below it in the queue.
+  const now = Date.now();
+  let cursor = await index.openCursor(null, 'prev');
+  while (cursor) {
+    const job = cursor.value;
+    if (!job.nextAttempt || job.nextAttempt <= now) {
+      return job;
+    }
+    cursor = await cursor.continue();
   }
 
-  return job;
+  return null;
 }
 
 export async function removeFromQueue(url: string): Promise<void> {
@@ -74,16 +95,37 @@ export async function getQueueSize(): Promise<number> {
 
 export async function getCrawled(url: string) {
   const database = await initDB();
-  return database.get('crawled', url);
+  const record = await database.get('crawled', url);
+  // Backfill the v2 status field for records written before it existed.
+  if (record && !record.status) {
+    return { ...record, status: 'fetched' as const };
+  }
+  return record;
 }
 
-export async function markCrawled(url: string, contentHash: string, title: string): Promise<void> {
+/**
+ * True only when we ACTUALLY fetched and parsed the page. Feed/sitemap
+ * observations don't count — the audit's observed-vs-fetched fix: a feed
+ * announcing a page must not permanently block a future real fetch of it.
+ */
+export async function isFetched(url: string): Promise<boolean> {
+  const record = await getCrawled(url);
+  return record?.status === 'fetched';
+}
+
+export async function markCrawled(
+  url: string,
+  contentHash: string,
+  title: string,
+  status: 'fetched' | 'observed' = 'fetched',
+): Promise<void> {
   const database = await initDB();
   await database.put('crawled', {
     url,
     contentHash,
     title,
     crawledAt: Date.now(),
+    status,
   });
 }
 
